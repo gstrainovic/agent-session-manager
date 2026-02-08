@@ -37,6 +37,9 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     // Draw command bar
     draw_commands(f, chunks[2]);
+
+    // Draw search modal if active
+    draw_search_modal(f, app);
 }
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
@@ -65,12 +68,8 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_list(f: &mut Frame, area: Rect, app: &App) {
-    let list = match app.current_tab {
-        Tab::Sessions => &app.sessions,
-        Tab::Trash => &app.trash,
-    };
-
-    let items: Vec<ListItem> = list
+    let filtered = app.filtered_sessions();
+    let items: Vec<ListItem> = filtered
         .iter()
         .enumerate()
         .map(|(idx, session)| {
@@ -79,7 +78,6 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
             } else {
                 Style::default()
             };
-
             ListItem::new(format!("• {}", session.id)).style(style)
         })
         .collect();
@@ -111,6 +109,26 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
             .block(Block::default().title("Preview").borders(Borders::ALL));
         f.render_widget(empty, area);
     }
+}
+
+fn draw_search_modal(f: &mut Frame, app: &App) {
+    if !app.show_search {
+        return;
+    }
+
+    let size = f.area();
+    let area = Rect {
+        x: size.width / 4,
+        y: size.height / 2,
+        width: size.width / 2,
+        height: 3,
+    };
+
+    let search = Paragraph::new(format!("Search: {}_", app.search_query))
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default().bg(Color::Black).fg(Color::White));
+
+    f.render_widget(search, area);
 }
 
 fn draw_commands(f: &mut Frame, area: Rect) {

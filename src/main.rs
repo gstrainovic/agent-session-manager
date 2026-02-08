@@ -44,16 +44,34 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
         if crossterm::event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                    KeyCode::Tab => app.switch_tab(),
-                    KeyCode::Up => app.select_prev(),
-                    KeyCode::Down => app.select_next(),
-                    KeyCode::PageDown => app.scroll_preview_down(),
-                    KeyCode::PageUp => app.scroll_preview_up(),
-                    KeyCode::Char('d') => println!("Delete pressed"),
-                    KeyCode::Char('r') => println!("Restore pressed"),
-                    KeyCode::Char('s') => println!("Switch pressed"),
-                    KeyCode::Char('e') => println!("Export pressed"),
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        if app.show_search {
+                            app.show_search = false;
+                        } else {
+                            return Ok(());
+                        }
+                    }
+                    KeyCode::Char('f') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                        app.toggle_search();
+                    }
+                    KeyCode::Tab if !app.show_search => app.switch_tab(),
+                    KeyCode::Up if !app.show_search => app.select_prev(),
+                    KeyCode::Down if !app.show_search => app.select_next(),
+                    KeyCode::PageDown if !app.show_search => app.scroll_preview_down(),
+                    KeyCode::PageUp if !app.show_search => app.scroll_preview_up(),
+                    KeyCode::Char('d') if !app.show_search => println!("Delete pressed"),
+                    KeyCode::Char('r') if !app.show_search => println!("Restore pressed"),
+                    KeyCode::Char('s') if !app.show_search => println!("Switch pressed"),
+                    KeyCode::Char('e') if !app.show_search => println!("Export pressed"),
+                    _ if app.show_search => {
+                        match key.code {
+                            KeyCode::Char(c) => app.add_search_char(c),
+                            KeyCode::Backspace => app.pop_search_char(),
+                            KeyCode::Esc => app.show_search = false,
+                            KeyCode::Enter => app.show_search = false,
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 }
             }

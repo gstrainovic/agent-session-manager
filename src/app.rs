@@ -81,6 +81,37 @@ impl App {
     pub fn scroll_preview_up(&mut self) {
         self.preview_scroll = self.preview_scroll.saturating_sub(3);
     }
+
+    pub fn filtered_sessions(&self) -> Vec<&Session> {
+        let list = match self.current_tab {
+            Tab::Sessions => &self.sessions,
+            Tab::Trash => &self.trash,
+        };
+
+        if self.search_query.is_empty() {
+            list.iter().collect()
+        } else {
+            let q = self.search_query.to_lowercase();
+            list.iter()
+                .filter(|s| s.id.to_lowercase().contains(&q))
+                .collect()
+        }
+    }
+
+    pub fn toggle_search(&mut self) {
+        self.show_search = !self.show_search;
+        if !self.show_search {
+            self.search_query.clear();
+        }
+    }
+
+    pub fn add_search_char(&mut self, c: char) {
+        self.search_query.push(c);
+    }
+
+    pub fn pop_search_char(&mut self) {
+        self.search_query.pop();
+    }
 }
 
 #[cfg(test)]
@@ -116,5 +147,18 @@ mod tests {
         
         app.switch_tab();
         assert_eq!(app.current_tab, Tab::Trash);
+    }
+
+    #[test]
+    fn test_search_filters_sessions() {
+        let mut app = App::new();
+        app.sessions = vec![
+            Session::new("auto-service".to_string(), "/p1".to_string()),
+            Session::new("dms-project".to_string(), "/p2".to_string()),
+        ];
+        
+        app.search_query = "auto".to_string();
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered.len(), 1);
     }
 }
