@@ -99,9 +99,16 @@ impl SessionStore {
         let content = fs::read_to_string(path)?;
         let messages = parse_jsonl_messages(&content);
 
+        // Get project directory (parent of the sessions directory)
+        let project_dir = path
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".to_string());
+
         Ok(Session {
             id: session_id,
-            project_path: path.to_string_lossy().to_string(),
+            project_path: project_dir,
             project_name: project_name.to_string(),
             created_at: created,
             updated_at: modified,
