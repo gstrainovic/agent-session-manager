@@ -13,6 +13,9 @@ anyhow = "1.0"
 chrono = "0.4"
 dirs = "5.0"
 
+[dev-dependencies]
+tempfile = "3"
+
 [[bin]]
 name = "agent-session-manager"
 path = "src/main.rs"
