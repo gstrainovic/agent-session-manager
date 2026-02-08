@@ -26,6 +26,8 @@ pub struct App {
     pub status_message: Option<String>,
     pub status_message_time: Option<Instant>,
     pub confirm_action: Option<ConfirmAction>,
+    pub resume_session_id: Option<String>,
+    pub resume_session_path: Option<String>,
 }
 
 impl App {
@@ -45,6 +47,8 @@ impl App {
             status_message: None,
             status_message_time: None,
             confirm_action: None,
+            resume_session_id: None,
+            resume_session_path: None,
         }
     }
 
@@ -61,6 +65,8 @@ impl App {
             status_message: None,
             status_message_time: None,
             confirm_action: None,
+            resume_session_id: None,
+            resume_session_path: None,
         }
     }
 
@@ -197,11 +203,26 @@ impl App {
 
     pub fn switch_to_selected_session(&mut self) {
         if let Some(session) = self.get_selected_session() {
+            let session_id = session.id.clone();
+            let project_path = session.project_path.clone();
+            let project_name = session.project_name.clone();
+            self.resume_session_id = Some(session_id.clone());
+            self.resume_session_path = Some(project_path);
             self.set_status(format!(
-                "Session: {} | claude --resume {}",
-                session.project_name, session.id
+                "Resuming session: {} | claude --resume {}",
+                project_name, session_id
             ));
         }
+    }
+
+    pub fn get_resume_command(&self) -> Option<String> {
+        self.resume_session_id
+            .as_ref()
+            .map(|id| format!("claude --resume {}", id))
+    }
+
+    pub fn get_resume_session_path(&self) -> Option<String> {
+        self.resume_session_path.clone()
     }
 
     pub fn request_delete_confirmation(&mut self) {
@@ -560,5 +581,67 @@ mod tests {
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
         assert!(app.status_message.unwrap().contains("PERMANENTLY delete"));
+    }
+
+    #[test]
+    fn test_switch_to_selected_session_sets_resume_id() {
+        let session = make_session("test-id", "test-project");
+        let mut app = App::with_sessions(vec![session]);
+        
+        app.switch_to_selected_session();
+        
+        assert_eq!(app.resume_session_id, Some("test-id".to_string()));
+    }
+
+    #[test]
+    fn test_switch_to_selected_session_sets_resume_path() {
+        let session = make_session("test-id", "test-project");
+        let mut app = App::with_sessions(vec![session.clone()]);
+        
+        app.switch_to_selected_session();
+        
+        assert_eq!(app.resume_session_path, Some(session.project_path));
+    }
+
+    #[test]
+    fn test_get_resume_command_none_when_no_id() {
+        let app = App::with_sessions(vec![]);
+        assert_eq!(app.get_resume_command(), None);
+    }
+
+    #[test]
+    fn test_get_resume_command_builds_correct_command() {
+        let session = make_session("abc123", "project");
+        let mut app = App::with_sessions(vec![session]);
+        
+        app.switch_to_selected_session();
+        
+        assert_eq!(
+            app.get_resume_command(),
+            Some("claude --resume abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_resume_session_path() {
+        let session = make_session("test-id", "test-project");
+        let mut app = App::with_sessions(vec![session.clone()]);
+        
+        app.switch_to_selected_session();
+        
+        assert_eq!(app.get_resume_session_path(), Some(session.project_path));
+    }
+
+    #[test]
+    fn test_resume_command_persists() {
+        let session = make_session("persist-test", "p");
+        let mut app = App::with_sessions(vec![session]);
+        
+        app.switch_to_selected_session();
+        let cmd1 = app.get_resume_command();
+        let cmd2 = app.get_resume_command();
+        
+        assert_eq!(cmd1, cmd2);
+        assert_eq!(cmd1, Some("claude --resume persist-test".to_string()));
     }
 }

@@ -13,6 +13,7 @@ use crossterm::{
 use ratatui::prelude::*;
 use std::error::Error;
 use std::io;
+use std::os::unix::process::CommandExt;
 
 fn main() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
@@ -29,17 +30,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
-    if let Err(err) = res {
-        eprintln!("{:?}", err);
+    match res {
+        Ok(Some((command, path))) => {
+            // Execute the resume command
+            let mut cmd = std::process::Command::new("claude");
+            cmd.args(vec!["--resume"]);
+            
+            // Parse session ID from command (format: "claude --resume <id>")
+            if let Some(session_id) = command.strip_prefix("claude --resume ") {
+                cmd.arg(session_id);
+            }
+            
+            // Change to project directory if available
+            if let Some(project_path) = path {
+                cmd.current_dir(project_path);
+            }
+            
+            let _ = cmd.exec();
+        }
+        Err(err) => {
+            eprintln!("{:?}", err);
+        }
+        Ok(None) => {}
     }
 
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<Option<(String, Option<String>)>> {
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
         app.clear_expired_status();
+
+        // Check if we should resume a session
+        if let Some(command) = app.get_resume_command() {
+            let path = app.get_resume_session_path();
+            return Ok(Some((command, path)));
+        }
 
         if crossterm::event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
@@ -50,7 +77,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         } else if app.show_search {
                             app.show_search = false;
                         } else {
-                            return Ok(());
+                            return Ok(None);
                         }
                     }
                     KeyCode::Char('f')
