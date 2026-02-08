@@ -5,21 +5,24 @@ use std::path::{Path, PathBuf};
 
 pub struct SessionStore {
     projects_path: PathBuf,
+    trash_path: PathBuf,
 }
 
 impl SessionStore {
     pub fn new() -> Self {
-        let projects_path = dirs::home_dir()
-            .expect("home dir")
-            .join(".claude/projects");
+        let home = dirs::home_dir().expect("home dir");
+        let projects_path = home.join(".claude/projects");
+        let trash_path = home.join(".claude/trash.json");
 
-        Self { projects_path }
+        Self { projects_path, trash_path }
     }
 
     #[cfg(test)]
     pub fn with_path(path: PathBuf) -> Self {
+        let trash_path = path.join("trash.json");
         Self {
             projects_path: path,
+            trash_path,
         }
     }
 
@@ -105,6 +108,23 @@ impl SessionStore {
             size: file_size,
             messages,
         })
+    }
+
+
+    pub fn load_trash(&self) -> Result<Vec<Session>> {
+        if !self.trash_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let content = fs::read_to_string(&self.trash_path)?;
+        let sessions: Vec<Session> = serde_json::from_str(&content)?;
+        Ok(sessions)
+    }
+
+    pub fn save_trash(&self, trash: &[Session]) -> Result<()> {
+        let json = serde_json::to_string_pretty(trash)?;
+        fs::write(&self.trash_path, json)?;
+        Ok(())
     }
 }
 

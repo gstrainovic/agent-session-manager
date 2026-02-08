@@ -283,6 +283,10 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                 vec![
                     Span::styled("[r]", Style::default().fg(Color::Green)),
                     Span::raw("estore  "),
+                    Span::styled("[d]", Style::default().fg(Color::Red)),
+                    Span::raw("elete  "),
+                    Span::styled("[Shift+E]", Style::default().fg(Color::Red)),
+                    Span::raw(" empty trash  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
                     Span::raw("uit"),
                 ]

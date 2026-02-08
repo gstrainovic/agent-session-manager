@@ -39,13 +39,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
+        app.clear_expired_status();
 
         if crossterm::event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => {
-                        if app.is_delete_pending() {
-                            app.cancel_delete_confirmation();
+                        if app.is_confirmation_pending() {
+                            app.cancel_confirmation();
                         } else if app.show_search {
                             app.show_search = false;
                         } else {
@@ -66,19 +67,32 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         app.switch_to_selected_session();
                     }
                     KeyCode::Char('d') if !app.show_search => {
-                        if app.is_delete_pending() {
-                            // Confirmation pending - execute delete
-                            if let Some(session) = app.get_selected_session() {
-                                let session_clone = session.clone();
-                                match commands::delete_session(&session_clone) {
-                                    Ok(_) => {
-                                        app.move_selected_to_trash();
-                                        app.confirm_delete = None;
+                        if app.is_confirmation_pending() {
+                            // Confirmation pending - check action type
+                            use crate::app::ConfirmAction;
+                            if let Some(action) = &app.confirm_action {
+                                match action {
+                                    ConfirmAction::DeleteToTrash(_) => {
+                                        // Delete from sessions and move to trash
+                                        if let Some(session) = app.get_selected_session() {
+                                            let session_clone = session.clone();
+                                            match commands::delete_session(&session_clone) {
+                                                Ok(_) => {
+                                                    app.move_selected_to_trash();
+                                                    app.confirm_action = None;
+                                                }
+                                                Err(_e) => {
+                                                    app.set_status("Delete failed".to_string());
+                                                    app.confirm_action = None;
+                                                }
+                                            }
+                                        }
                                     }
-                                    Err(_e) => {
-                                        app.status_message =
-                                            Some("Delete failed".to_string());
-                                        app.confirm_delete = None;
+                                    ConfirmAction::DeletePermanently(_) => {
+                                        app.confirm_and_execute();
+                                    }
+                                    ConfirmAction::EmptyTrash => {
+                                        app.confirm_and_execute();
                                     }
                                 }
                             }
@@ -87,39 +101,55 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             app.request_delete_confirmation();
                         }
                     }
-                    KeyCode::Char('y') if !app.show_search && app.is_delete_pending() => {
-                        // Confirm delete with 'y'
-                        if let Some(session) = app.get_selected_session() {
-                            let session_clone = session.clone();
-                            match commands::delete_session(&session_clone) {
-                                Ok(_) => {
-                                    app.move_selected_to_trash();
-                                    app.confirm_delete = None;
+                    KeyCode::Char('y') if !app.show_search && app.is_confirmation_pending() => {
+                        // Confirm with 'y' - same logic as 'd'
+                        use crate::app::ConfirmAction;
+                        if let Some(action) = &app.confirm_action {
+                            match action {
+                                ConfirmAction::DeleteToTrash(_) => {
+                                    if let Some(session) = app.get_selected_session() {
+                                        let session_clone = session.clone();
+                                        match commands::delete_session(&session_clone) {
+                                            Ok(_) => {
+                                                app.move_selected_to_trash();
+                                                app.confirm_action = None;
+                                            }
+                                            Err(_e) => {
+                                                app.set_status("Delete failed".to_string());
+                                                app.confirm_action = None;
+                                            }
+                                        }
+                                    }
                                 }
-                                Err(_e) => {
-                                    app.status_message =
-                                        Some("Delete failed".to_string());
-                                    app.confirm_delete = None;
+                                ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash => {
+                                    app.confirm_and_execute();
                                 }
                             }
                         }
                     }
-                    KeyCode::Char('n') if !app.show_search && app.is_delete_pending() => {
-                        app.cancel_delete_confirmation();
+                    KeyCode::Char('n') if !app.show_search && app.is_confirmation_pending() => {
+                        app.cancel_confirmation();
                     }
                     KeyCode::Char('r') if !app.show_search => {
                         app.restore_selected_from_trash();
+                    }
+                    KeyCode::Char('E') if !app.show_search => {
+                        if app.is_confirmation_pending() {
+                            // Confirm empty trash with 'E'
+                            app.confirm_and_execute();
+                        } else {
+                            // Request empty trash confirmation
+                            app.request_empty_trash();
+                        }
                     }
                     KeyCode::Char('e') if !app.show_search => {
                         if let Some(session) = app.get_selected_session() {
                             match commands::export_session(session) {
                                 Ok(path) => {
-                                    app.status_message =
-                                        Some(format!("Exported to {}", path));
+                                    app.set_status(format!("Exported to {}", path));
                                 }
                                 Err(_e) => {
-                                    app.status_message =
-                                        Some("Export failed".to_string());
+                                    app.set_status("Export failed".to_string());
                                 }
                             }
                         }

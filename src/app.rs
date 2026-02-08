@@ -1,10 +1,18 @@
 use crate::models::Session;
 use crate::store::SessionStore;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tab {
     Sessions,
     Trash,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfirmAction {
+    DeleteToTrash(String),      // Session ID to move to trash
+    DeletePermanently(String),  // Session ID to delete permanently
+    EmptyTrash,                 // Empty entire trash
 }
 
 pub struct App {
@@ -16,24 +24,27 @@ pub struct App {
     pub search_query: String,
     pub show_search: bool,
     pub status_message: Option<String>,
-    pub confirm_delete: Option<String>, // Session ID pending deletion
+    pub status_message_time: Option<Instant>,
+    pub confirm_action: Option<ConfirmAction>,
 }
 
 impl App {
     pub fn new() -> Self {
         let store = SessionStore::new();
         let sessions = store.load_sessions().unwrap_or_default();
+        let trash = store.load_trash().unwrap_or_default();
 
         Self {
             current_tab: Tab::Sessions,
             sessions,
-            trash: Vec::new(),
+            trash,
             selected_session_idx: 0,
             preview_scroll: 0,
             search_query: String::new(),
             show_search: false,
             status_message: None,
-            confirm_delete: None,
+            status_message_time: None,
+            confirm_action: None,
         }
     }
 
@@ -48,7 +59,8 @@ impl App {
             search_query: String::new(),
             show_search: false,
             status_message: None,
-            confirm_delete: None,
+            status_message_time: None,
+            confirm_action: None,
         }
     }
 
@@ -142,7 +154,12 @@ impl App {
             if let Some(pos) = self.sessions.iter().position(|s| s.id == id) {
                 let removed = self.sessions.remove(pos);
                 self.trash.push(removed);
-                self.status_message = Some(format!("Moved to trash: {}", id));
+
+                // Save trash to disk
+                let store = SessionStore::new();
+                let _ = store.save_trash(&self.trash);
+
+                self.set_status(format!("Moved to trash: {}", id));
                 if self.selected_session_idx > 0
                     && self.selected_session_idx >= self.sessions.len()
                 {
@@ -154,7 +171,7 @@ impl App {
 
     pub fn restore_selected_from_trash(&mut self) {
         if self.current_tab != Tab::Trash {
-            self.status_message = Some("Switch to Trash tab first".to_string());
+            self.set_status("Switch to Trash tab first".to_string());
             return;
         }
         let filtered = self.filtered_sessions();
@@ -163,7 +180,12 @@ impl App {
             if let Some(pos) = self.trash.iter().position(|s| s.id == id) {
                 let removed = self.trash.remove(pos);
                 self.sessions.push(removed);
-                self.status_message = Some(format!("Restored: {}", id));
+
+                // Save trash to disk
+                let store = SessionStore::new();
+                let _ = store.save_trash(&self.trash);
+
+                self.set_status(format!("Restored: {}", id));
                 if self.selected_session_idx > 0
                     && self.selected_session_idx >= self.trash.len()
                 {
@@ -175,7 +197,7 @@ impl App {
 
     pub fn switch_to_selected_session(&mut self) {
         if let Some(session) = self.get_selected_session() {
-            self.status_message = Some(format!(
+            self.set_status(format!(
                 "Session: {} | claude --resume {}",
                 session.project_name, session.id
             ));
@@ -186,21 +208,123 @@ impl App {
         if let Some(session) = self.get_selected_session() {
             let session_id = session.id.clone();
             let project_name = session.project_name.clone();
-            self.confirm_delete = Some(session_id);
-            self.status_message = Some(format!(
-                "Delete session '{}'? Press 'd' or 'y' to confirm, 'n' or Esc to cancel",
-                project_name
-            ));
+
+            let action = if self.current_tab == Tab::Trash {
+                ConfirmAction::DeletePermanently(session_id)
+            } else {
+                ConfirmAction::DeleteToTrash(session_id)
+            };
+
+            self.confirm_action = Some(action.clone());
+
+            let message = match action {
+                ConfirmAction::DeleteToTrash(_) => format!(
+                    "Move '{}' to trash? Press 'd' or 'y' to confirm, 'n' or Esc to cancel",
+                    project_name
+                ),
+                ConfirmAction::DeletePermanently(_) => format!(
+                    "PERMANENTLY delete '{}'? Press 'd' or 'y' to confirm, 'n' or Esc to cancel",
+                    project_name
+                ),
+                _ => String::new(),
+            };
+
+            self.set_status(message);
         }
     }
 
-    pub fn cancel_delete_confirmation(&mut self) {
-        self.confirm_delete = None;
-        self.status_message = Some("Delete cancelled".to_string());
+    pub fn request_empty_trash(&mut self) {
+        if self.current_tab != Tab::Trash {
+            return;
+        }
+
+        let count = self.trash.len();
+        if count == 0 {
+            self.set_status("Trash is already empty".to_string());
+            return;
+        }
+
+        self.confirm_action = Some(ConfirmAction::EmptyTrash);
+        self.set_status(format!(
+            "PERMANENTLY delete ALL {} sessions in trash? Press 'E' or 'y' to confirm, 'n' or Esc to cancel",
+            count
+        ));
     }
 
-    pub fn is_delete_pending(&self) -> bool {
-        self.confirm_delete.is_some()
+    pub fn cancel_confirmation(&mut self) {
+        self.confirm_action = None;
+        self.set_status("Action cancelled".to_string());
+    }
+
+    pub fn is_confirmation_pending(&self) -> bool {
+        self.confirm_action.is_some()
+    }
+
+    pub fn confirm_and_execute(&mut self) {
+        if let Some(action) = self.confirm_action.clone() {
+            match action {
+                ConfirmAction::DeleteToTrash(_) => {
+                    // This is handled in main.rs by calling delete_session + move_to_trash
+                }
+                ConfirmAction::DeletePermanently(_) => {
+                    self.delete_permanently();
+                }
+                ConfirmAction::EmptyTrash => {
+                    self.empty_trash();
+                }
+            }
+        }
+    }
+
+    fn delete_permanently(&mut self) {
+        let session_id = if let Some(ConfirmAction::DeletePermanently(id)) = &self.confirm_action {
+            id.clone()
+        } else {
+            return;
+        };
+
+        if let Some(pos) = self.trash.iter().position(|s| s.id == session_id) {
+            self.trash.remove(pos);
+
+            // Save trash to disk
+            let store = SessionStore::new();
+            let _ = store.save_trash(&self.trash);
+
+            self.set_status(format!("Permanently deleted: {}", session_id));
+            self.confirm_action = None;
+
+            if self.selected_session_idx > 0 && self.selected_session_idx >= self.trash.len() {
+                self.selected_session_idx -= 1;
+            }
+        }
+    }
+
+    fn empty_trash(&mut self) {
+        let count = self.trash.len();
+        self.trash.clear();
+
+        // Save empty trash to disk
+        let store = SessionStore::new();
+        let _ = store.save_trash(&self.trash);
+
+        self.set_status(format!("Permanently deleted {} sessions", count));
+        self.confirm_action = None;
+        self.selected_session_idx = 0;
+    }
+
+
+    pub fn set_status(&mut self, message: String) {
+        self.status_message = Some(message);
+        self.status_message_time = Some(Instant::now());
+    }
+
+    pub fn clear_expired_status(&mut self) {
+        if let Some(time) = self.status_message_time {
+            if time.elapsed().as_secs() >= 3 {
+                self.status_message = None;
+                self.status_message_time = None;
+            }
+        }
     }
 }
 
@@ -374,5 +498,67 @@ mod tests {
         app.selected_session_idx = 1;
         app.move_selected_to_trash();
         assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_set_status_sets_both_message_and_time() {
+        let mut app = App::with_sessions(vec![]);
+        app.set_status("Test message".to_string());
+        
+        assert!(app.status_message.is_some());
+        assert!(app.status_message_time.is_some());
+        assert_eq!(app.status_message.unwrap(), "Test message");
+    }
+
+    #[test]
+    fn test_clear_expired_status_removes_after_expiry() {
+        let mut app = App::with_sessions(vec![]);
+        app.set_status("Test message".to_string());
+        
+        // Immediately clear - should not remove (less than 3 seconds)
+        app.clear_expired_status();
+        assert!(app.status_message.is_some());
+        
+        // Manually set time to 3+ seconds ago
+        use std::time::Instant;
+        app.status_message_time = Some(Instant::now() - std::time::Duration::from_secs(3));
+        app.clear_expired_status();
+        assert!(app.status_message.is_none());
+        assert!(app.status_message_time.is_none());
+    }
+
+    #[test]
+    fn test_export_status_uses_set_status() {
+        let mut app = App::with_sessions(vec![make_session("test-id", "test-proj")]);
+        // Simulate export success by manually calling set_status
+        app.set_status("Exported to /path/file.md".to_string());
+        
+        assert!(app.status_message.is_some());
+        assert!(app.status_message_time.is_some());
+        assert!(app.status_message.unwrap().contains("Exported to"));
+    }
+
+    #[test]
+    fn test_request_delete_confirmation_uses_set_status() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.request_delete_confirmation();
+        
+        // Status message should be set with time
+        assert!(app.status_message.is_some());
+        assert!(app.status_message_time.is_some());
+        assert!(app.status_message.unwrap().contains("trash"));
+    }
+
+    #[test]
+    fn test_request_empty_trash_uses_set_status() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("s1", "p1")];
+        app.current_tab = Tab::Trash;
+        app.request_empty_trash();
+        
+        // Status message should be set with time
+        assert!(app.status_message.is_some());
+        assert!(app.status_message_time.is_some());
+        assert!(app.status_message.unwrap().contains("PERMANENTLY delete"));
     }
 }
