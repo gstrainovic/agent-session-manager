@@ -3,6 +3,37 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Converts a Claude project slug (e.g. "-home-g-agent-session-manager") back to
+/// the actual filesystem path (e.g. "/home/g/agent-session-manager").
+/// Uses a greedy algorithm trying longest directory segments first.
+fn slug_to_path(slug: &str) -> Option<PathBuf> {
+    let slug = slug.strip_prefix('-').unwrap_or(slug);
+    let parts: Vec<&str> = slug.split('-').collect();
+
+    let mut path = PathBuf::from("/");
+    let mut i = 0;
+
+    while i < parts.len() {
+        let mut found = false;
+        // Try longest segment combination first (greedy)
+        for j in (i + 1..=parts.len()).rev() {
+            let candidate = parts[i..j].join("-");
+            let test_path = path.join(&candidate);
+            if test_path.is_dir() {
+                path = test_path;
+                i = j;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return None;
+        }
+    }
+
+    Some(path)
+}
+
 pub struct SessionStore {
     projects_path: PathBuf,
     trash_path: PathBuf,
@@ -41,11 +72,15 @@ impl SessionStore {
                 continue;
             }
 
-            let project_name = project_path
+            let project_slug = project_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string();
+
+            let resolved_path = slug_to_path(&project_slug)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| project_slug.clone());
 
             for file_entry in fs::read_dir(&project_path)? {
                 let file_entry = file_entry?;
@@ -56,7 +91,7 @@ impl SessionStore {
                 }
 
                 if let Ok(session) =
-                    self.load_session_from_jsonl(&file_path, &project_name)
+                    self.load_session_from_jsonl(&file_path, &project_slug, &resolved_path)
                 {
                     sessions.push(session);
                 }
@@ -68,7 +103,7 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    fn load_session_from_jsonl(&self, path: &Path, project_name: &str) -> Result<Session> {
+    fn load_session_from_jsonl(&self, path: &Path, project_name: &str, project_path: &str) -> Result<Session> {
         let session_id = path
             .file_stem()
             .and_then(|n| n.to_str())
@@ -99,16 +134,9 @@ impl SessionStore {
         let content = fs::read_to_string(path)?;
         let messages = parse_jsonl_messages(&content);
 
-        // Get project directory (parent of the sessions directory)
-        let project_dir = path
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| ".".to_string());
-
         Ok(Session {
             id: session_id,
-            project_path: project_dir,
+            project_path: project_path.to_string(),
             project_name: project_name.to_string(),
             created_at: created,
             updated_at: modified,
@@ -236,5 +264,27 @@ mod tests {
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].id, "new-session");
         assert_eq!(sessions[1].id, "old-session");
+    }
+
+    #[test]
+    fn test_slug_to_path_resolves_home() {
+        // "-home-g" should resolve to /home/g if it exists
+        let result = slug_to_path("-home-g");
+        if PathBuf::from("/home/g").is_dir() {
+            assert_eq!(result, Some(PathBuf::from("/home/g")));
+        }
+    }
+
+    #[test]
+    fn test_slug_to_path_returns_none_for_nonexistent() {
+        let result = slug_to_path("-nonexistent-path-xyz123");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_slug_to_path_handles_empty() {
+        let result = slug_to_path("");
+        // Empty slug with no parts should resolve to "/"
+        assert_eq!(result, Some(PathBuf::from("/")));
     }
 }
