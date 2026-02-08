@@ -26,7 +26,7 @@ impl App {
     pub fn new() -> Self {
         let store = SessionStore::new();
         let sessions = store.load_sessions().unwrap_or_default();
-        
+
         Self {
             current_tab: Tab::Sessions,
             sessions,
@@ -44,7 +44,7 @@ impl App {
             Tab::Sessions => &self.sessions,
             Tab::Trash => &self.trash,
         };
-        
+
         if !list.is_empty() && self.selected_session_idx < list.len() - 1 {
             self.selected_session_idx += 1;
         }
@@ -132,10 +132,10 @@ mod tests {
             Session::new("s1".to_string(), "/p1".to_string()),
             Session::new("s2".to_string(), "/p2".to_string()),
         ];
-        
+
         app.select_next();
         assert_eq!(app.selected_session_idx, 1);
-        
+
         app.select_next();
         assert_eq!(app.selected_session_idx, 1); // stays at end
     }
@@ -144,7 +144,7 @@ mod tests {
     fn test_switch_tab() {
         let mut app = App::new();
         assert_eq!(app.current_tab, Tab::Sessions);
-        
+
         app.switch_tab();
         assert_eq!(app.current_tab, Tab::Trash);
     }
@@ -156,7 +156,7 @@ mod tests {
             Session::new("auto-service".to_string(), "/p1".to_string()),
             Session::new("dms-project".to_string(), "/p2".to_string()),
         ];
-        
+
         app.search_query = "auto".to_string();
         let filtered = app.filtered_sessions();
         assert_eq!(filtered.len(), 1);

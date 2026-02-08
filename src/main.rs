@@ -75,15 +75,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Char('r') if !app.show_search => println!("Restore pressed"),
                     KeyCode::Char('s') if !app.show_search => println!("Switch pressed"),
                     KeyCode::Char('e') if !app.show_search => println!("Export pressed"),
-                    _ if app.show_search => {
-                        match key.code {
-                            KeyCode::Char(c) => app.add_search_char(c),
-                            KeyCode::Backspace => app.pop_search_char(),
-                            KeyCode::Esc => app.show_search = false,
-                            KeyCode::Enter => app.show_search = false,
-                            _ => {}
-                        }
-                    }
+                    _ if app.show_search => match key.code {
+                        KeyCode::Char(c) => app.add_search_char(c),
+                        KeyCode::Backspace => app.pop_search_char(),
+                        KeyCode::Esc => app.show_search = false,
+                        KeyCode::Enter => app.show_search = false,
+                        _ => {}
+                    },
                     _ => {}
                 }
             }

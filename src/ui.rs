@@ -15,9 +15,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         .margin(0)
         .constraints(
             [
-                Constraint::Length(3),  // Tabs
-                Constraint::Min(10),    // Content
-                Constraint::Length(3),  // Commands
+                Constraint::Length(3), // Tabs
+                Constraint::Min(10),   // Content
+                Constraint::Length(3), // Commands
             ]
             .as_ref(),
         )
@@ -44,13 +44,17 @@ pub fn draw(f: &mut Frame, app: &App) {
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     let sessions_style = if app.current_tab == Tab::Sessions {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Gray)
     };
 
     let trash_style = if app.current_tab == Tab::Trash {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Gray)
     };
@@ -61,8 +65,7 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     ];
 
     let tabs_line = Line::from(tabs);
-    let tabs_widget = Paragraph::new(tabs_line)
-        .block(Block::default().borders(Borders::BOTTOM));
+    let tabs_widget = Paragraph::new(tabs_line).block(Block::default().borders(Borders::BOTTOM));
 
     f.render_widget(tabs_widget, area);
 }
@@ -82,8 +85,8 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let list_widget = List::new(items)
-        .block(Block::default().title("Sessions").borders(Borders::ALL));
+    let list_widget =
+        List::new(items).block(Block::default().title("Sessions").borders(Borders::ALL));
 
     f.render_widget(list_widget, area);
 }
@@ -93,7 +96,11 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
         let mut lines = vec![Line::from("[Start of Conversation]")];
 
         for msg in &session.messages {
-            let prefix = if msg.role == "user" { "You: " } else { "Agent: " };
+            let prefix = if msg.role == "user" {
+                "You: "
+            } else {
+                "Agent: "
+            };
             lines.push(Line::from(format!("{}{}", prefix, msg.content)));
         }
 
