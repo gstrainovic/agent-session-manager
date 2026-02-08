@@ -11,6 +11,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0"
 chrono = "0.4"
+dirs = "5.0"
 
 [[bin]]
 name = "agent-session-manager"
