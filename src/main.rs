@@ -1,6 +1,7 @@
 // src/main.rs
 
 mod app;
+mod commands;
 mod models;
 mod store;
 mod ui;
@@ -59,7 +60,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Down if !app.show_search => app.select_next(),
                     KeyCode::PageDown if !app.show_search => app.scroll_preview_down(),
                     KeyCode::PageUp if !app.show_search => app.scroll_preview_up(),
-                    KeyCode::Char('d') if !app.show_search => println!("Delete pressed"),
+                    KeyCode::Char('d') if !app.show_search => {
+                        if let Some(session) = app.get_selected_session() {
+                            match commands::delete_session(session) {
+                                Ok(_) => {
+                                    // Success - session would be moved to trash in full implementation
+                                }
+                                Err(e) => {
+                                    eprintln!("Delete error: {}", e);
+                                }
+                            }
+                        }
+                    }
                     KeyCode::Char('r') if !app.show_search => println!("Restore pressed"),
                     KeyCode::Char('s') if !app.show_search => println!("Switch pressed"),
                     KeyCode::Char('e') if !app.show_search => println!("Export pressed"),
