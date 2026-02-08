@@ -32,22 +32,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match res {
         Ok(Some((command, path))) => {
-            // Execute the resume command
-            let mut cmd = std::process::Command::new("claude");
-            cmd.args(vec!["--resume"]);
-            
-            // Parse session ID from command (format: "claude --resume <id>")
-            if let Some(session_id) = command.strip_prefix("claude --resume ") {
-                cmd.arg(session_id);
-            }
-            
-            // Change to project directory if available
-            if let Some(project_path) = path {
-                cmd.current_dir(&project_path);
-            }
-            
+            // Build shell command: clear && cd <project> && claude --resume <id>
+            let session_id = command
+                .strip_prefix("claude --resume ")
+                .unwrap_or_default();
+
+            let shell_cmd = match path {
+                Some(project_path) => format!(
+                    "clear && cd {} && claude --resume {}",
+                    shell_escape(&project_path),
+                    session_id
+                ),
+                None => format!("clear && claude --resume {}", session_id),
+            };
+
             // exec() replaces the current process on success, only returns on error
-            let exec_error = cmd.exec();
+            let exec_error = std::process::Command::new("sh")
+                .args(["-c", &shell_cmd])
+                .exec();
             eprintln!("Failed to execute 'claude --resume': {}", exec_error);
             std::process::exit(1);
         }
@@ -58,6 +60,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+/// Escapes a string for safe use in shell commands
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<Option<(String, Option<String>)>> {
