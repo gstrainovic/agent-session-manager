@@ -102,7 +102,8 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
         lines.push(Line::from("[End of Conversation]"));
 
         let preview = Paragraph::new(lines)
-            .block(Block::default().title("Preview").borders(Borders::ALL));
+            .block(Block::default().title("Preview").borders(Borders::ALL))
+            .scroll((app.preview_scroll, 0));
 
         f.render_widget(preview, area);
     } else {

@@ -73,6 +73,14 @@ impl App {
             Tab::Trash => self.trash.get(self.selected_session_idx),
         }
     }
+
+    pub fn scroll_preview_down(&mut self) {
+        self.preview_scroll = self.preview_scroll.saturating_add(3);
+    }
+
+    pub fn scroll_preview_up(&mut self) {
+        self.preview_scroll = self.preview_scroll.saturating_sub(3);
+    }
 }
 
 #[cfg(test)]

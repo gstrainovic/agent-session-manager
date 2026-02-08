@@ -48,6 +48,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Tab => app.switch_tab(),
                     KeyCode::Up => app.select_prev(),
                     KeyCode::Down => app.select_next(),
+                    KeyCode::PageDown => app.scroll_preview_down(),
+                    KeyCode::PageUp => app.scroll_preview_up(),
                     KeyCode::Char('d') => println!("Delete pressed"),
                     KeyCode::Char('r') => println!("Restore pressed"),
                     KeyCode::Char('s') => println!("Switch pressed"),
