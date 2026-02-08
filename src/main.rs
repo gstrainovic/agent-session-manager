@@ -43,10 +43,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             
             // Change to project directory if available
             if let Some(project_path) = path {
-                cmd.current_dir(project_path);
+                cmd.current_dir(&project_path);
             }
             
-            let _ = cmd.exec();
+            // exec() replaces the current process on success, only returns on error
+            let exec_error = cmd.exec();
+            eprintln!("Failed to execute 'claude --resume': {}", exec_error);
+            std::process::exit(1);
         }
         Err(err) => {
             eprintln!("{:?}", err);
