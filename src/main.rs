@@ -117,8 +117,10 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
         KeyCode::Tab if !app.show_search => app.switch_tab(),
         KeyCode::Up if !app.show_search => app.select_prev(),
         KeyCode::Down if !app.show_search => app.select_next(),
-        KeyCode::PageDown if !app.show_search => app.scroll_preview_down(),
-        KeyCode::PageUp if !app.show_search => app.scroll_preview_up(),
+        KeyCode::Left if !app.show_search => app.focus_left(),
+        KeyCode::Right if !app.show_search => app.focus_right(),
+        KeyCode::PageDown if !app.show_search => app.page_down(10),
+        KeyCode::PageUp if !app.show_search => app.page_up(10),
         KeyCode::Enter if !app.show_search => {
             app.switch_to_selected_session();
         }

@@ -8,6 +8,12 @@ pub enum Tab {
     Trash,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FocusPanel {
+    List,
+    Preview,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfirmAction {
     DeleteToTrash(String),      // Session ID to move to trash
@@ -29,6 +35,7 @@ pub struct App {
     pub confirm_action: Option<ConfirmAction>,
     pub resume_session_id: Option<String>,
     pub resume_session_path: Option<String>,
+    pub focus: FocusPanel,
 }
 
 impl App {
@@ -50,6 +57,7 @@ impl App {
             confirm_action: None,
             resume_session_id: None,
             resume_session_path: None,
+            focus: FocusPanel::List,
         }
     }
 
@@ -68,6 +76,7 @@ impl App {
             confirm_action: None,
             resume_session_id: None,
             resume_session_path: None,
+            focus: FocusPanel::List,
         }
     }
 
@@ -107,12 +116,40 @@ impl App {
         }
     }
 
-    pub fn scroll_preview_down(&mut self) {
-        self.preview_scroll = self.preview_scroll.saturating_add(3);
+
+    pub fn focus_left(&mut self) {
+        self.focus = FocusPanel::List;
     }
 
-    pub fn scroll_preview_up(&mut self) {
-        self.preview_scroll = self.preview_scroll.saturating_sub(3);
+    pub fn focus_right(&mut self) {
+        self.focus = FocusPanel::Preview;
+    }
+
+    pub fn page_down(&mut self, page_size: usize) {
+        match self.focus {
+            FocusPanel::List => {
+                let list = self.filtered_sessions();
+                if !list.is_empty() {
+                    self.selected_session_idx = (self.selected_session_idx + page_size).min(list.len() - 1);
+                    self.preview_scroll = 0;
+                }
+            }
+            FocusPanel::Preview => {
+                self.preview_scroll = self.preview_scroll.saturating_add(page_size as u16);
+            }
+        }
+    }
+
+    pub fn page_up(&mut self, page_size: usize) {
+        match self.focus {
+            FocusPanel::List => {
+                self.selected_session_idx = self.selected_session_idx.saturating_sub(page_size);
+                self.preview_scroll = 0;
+            }
+            FocusPanel::Preview => {
+                self.preview_scroll = self.preview_scroll.saturating_sub(page_size as u16);
+            }
+        }
     }
 
     pub fn filtered_sessions(&self) -> Vec<&Session> {
@@ -520,15 +557,16 @@ mod tests {
     #[test]
     fn test_scroll_preview() {
         let mut app = App::with_sessions(vec![]);
-        app.scroll_preview_down();
+        app.focus = FocusPanel::Preview;
+        app.page_down(3);
         assert_eq!(app.preview_scroll, 3);
-        app.scroll_preview_down();
+        app.page_down(3);
         assert_eq!(app.preview_scroll, 6);
-        app.scroll_preview_up();
+        app.page_up(3);
         assert_eq!(app.preview_scroll, 3);
-        app.scroll_preview_up();
+        app.page_up(3);
         assert_eq!(app.preview_scroll, 0);
-        app.scroll_preview_up(); // no underflow
+        app.page_up(3); // no underflow
         assert_eq!(app.preview_scroll, 0);
     }
 
@@ -712,6 +750,88 @@ mod tests {
         
         assert_eq!(app.confirm_action, None);
         assert!(app.status_message.unwrap().contains("No empty sessions"));
+    }
+
+    #[test]
+    fn test_default_focus_is_list() {
+        let app = App::with_sessions(vec![make_session("s1", "p1")]);
+        assert_eq!(app.focus, FocusPanel::List);
+    }
+
+    #[test]
+    fn test_focus_switches_to_preview() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus_right();
+        assert_eq!(app.focus, FocusPanel::Preview);
+    }
+
+    #[test]
+    fn test_focus_switches_back_to_list() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus_right();
+        app.focus_left();
+        assert_eq!(app.focus, FocusPanel::List);
+    }
+
+    #[test]
+    fn test_focus_left_stays_at_list() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus_left();
+        assert_eq!(app.focus, FocusPanel::List);
+    }
+
+    #[test]
+    fn test_focus_right_stays_at_preview() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus_right();
+        app.focus_right();
+        assert_eq!(app.focus, FocusPanel::Preview);
+    }
+
+    #[test]
+    fn test_page_down_list_moves_selection() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+            make_session("s4", "p4"),
+            make_session("s5", "p5"),
+        ]);
+        app.focus = FocusPanel::List;
+        app.page_down(10); // page size larger than list
+        assert_eq!(app.selected_session_idx, 4); // clamped to last
+    }
+
+    #[test]
+    fn test_page_up_list_moves_selection() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+            make_session("s4", "p4"),
+            make_session("s5", "p5"),
+        ]);
+        app.focus = FocusPanel::List;
+        app.selected_session_idx = 4;
+        app.page_up(10);
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_page_down_preview_scrolls() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus = FocusPanel::Preview;
+        app.page_down(10);
+        assert_eq!(app.preview_scroll, 10);
+    }
+
+    #[test]
+    fn test_page_up_preview_scrolls() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus = FocusPanel::Preview;
+        app.preview_scroll = 15;
+        app.page_up(10);
+        assert_eq!(app.preview_scroll, 5);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::app::{App, Tab};
+use crate::app::{App, FocusPanel, Tab};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -123,7 +123,9 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
+                .border_style(Style::default().fg(
+                    if app.focus == FocusPanel::List { Color::Green } else { Color::DarkGray }
+                )),
         )
         .row_highlight_style(
             Style::default()
@@ -215,7 +217,9 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(" Preview ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow)),
+                    .border_style(Style::default().fg(
+                        if app.focus == FocusPanel::Preview { Color::Yellow } else { Color::DarkGray }
+                    )),
             )
             .style(Style::default().bg(Color::Black))
             .wrap(Wrap { trim: false })
@@ -271,8 +275,10 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw("elete  "),
                     Span::styled("[e]", Style::default().fg(Color::Yellow)),
                     Span::raw("xport  "),
+                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
+                    Span::raw(" focus  "),
                     Span::styled("[PgUp/PgDn]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" scroll  "),
+                    Span::raw(" page  "),
                     Span::styled("[0]", Style::default().fg(Color::Red)),
                     Span::raw(" trash 0msg  "),
                     Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
