@@ -1,5 +1,6 @@
 use crate::models::{parse_jsonl_messages, Session};
 use anyhow::{Context, Result};
+use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -134,53 +135,53 @@ impl SessionStore {
     where
         F: FnMut(usize, usize),
     {
-        let mut sessions = Vec::new();
-
         if !self.projects_path.exists() {
-            return Ok(sessions);
+            return Ok(Vec::new());
         }
 
         let total = self.count_session_files();
-        let mut loaded = 0;
 
-        for project_entry in fs::read_dir(&self.projects_path)? {
-            let project_entry = project_entry?;
-            let project_path = project_entry.path();
+        let file_paths: Vec<(PathBuf, String, String)> = {
+            let mut paths = Vec::new();
+            for project_entry in fs::read_dir(&self.projects_path)? {
+                let project_entry = project_entry?;
+                let project_path = project_entry.path();
 
-            if !project_path.is_dir() {
-                continue;
-            }
-
-            let project_slug = project_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            let resolved_path = slug_to_path(&project_slug)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| project_slug.clone());
-
-            for file_entry in fs::read_dir(&project_path)? {
-                let file_entry = file_entry?;
-                let file_path = file_entry.path();
-
-                if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                if !project_path.is_dir() {
                     continue;
                 }
 
-                if let Ok(session) =
-                    self.load_session_from_jsonl(&file_path, &project_slug, &resolved_path)
-                {
-                    sessions.push(session);
+                let project_slug = project_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let resolved_path = slug_to_path(&project_slug)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| project_slug.clone());
+
+                for file_entry in fs::read_dir(&project_path)? {
+                    let file_entry = file_entry?;
+                    let file_path = file_entry.path();
+
+                    if file_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                        paths.push((file_path, project_slug.clone(), resolved_path.clone()));
+                    }
                 }
-
-                loaded += 1;
-                on_progress(loaded, total);
             }
-        }
+            paths
+        };
 
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        let sessions: Vec<Session> = file_paths
+            .into_par_iter()
+            .filter_map(|(file_path, project_slug, resolved_path)| {
+                self.load_session_from_jsonl(&file_path, &project_slug, &resolved_path)
+                    .ok()
+            })
+            .collect();
+
+        on_progress(total, total);
 
         Ok(sessions)
     }
@@ -417,9 +418,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(sessions.len(), 2);
-        assert_eq!(progress_calls.len(), 2);
-        assert_eq!(progress_calls[0].1, 2); // total is always 2
-        assert_eq!(progress_calls[1], (2, 2)); // last call: all loaded
+        assert_eq!(progress_calls.len(), 1);
+        assert_eq!(progress_calls[0], (2, 2));
     }
 
     #[test]
