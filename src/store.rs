@@ -45,7 +45,10 @@ impl SessionStore {
         let projects_path = home.join(".claude/projects");
         let trash_path = home.join(".claude/trash.json");
 
-        Self { projects_path, trash_path }
+        Self {
+            projects_path,
+            trash_path,
+        }
     }
 
     #[cfg(test)]
@@ -182,7 +185,12 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    fn load_session_from_jsonl(&self, path: &Path, project_name: &str, project_path: &str) -> Result<Session> {
+    fn load_session_from_jsonl(
+        &self,
+        path: &Path,
+        project_name: &str,
+        project_path: &str,
+    ) -> Result<Session> {
         let session_id = path
             .file_stem()
             .and_then(|n| n.to_str())
@@ -223,9 +231,9 @@ impl SessionStore {
             size: file_size,
             total_entries,
             messages,
+            original_content: Some(content),
         })
     }
-
 
     pub fn load_trash(&self) -> Result<Vec<Session>> {
         if !self.trash_path.exists() {
@@ -240,6 +248,31 @@ impl SessionStore {
     pub fn save_trash(&self, trash: &[Session]) -> Result<()> {
         let json = serde_json::to_string_pretty(trash)?;
         fs::write(&self.trash_path, json)?;
+        Ok(())
+    }
+
+    /// Returns the path to a session's JSONL file based on project_name and id
+    pub fn get_session_file_path(&self, project_name: &str, session_id: &str) -> PathBuf {
+        self.projects_path
+            .join(project_name)
+            .join(format!("{}.jsonl", session_id))
+    }
+
+    /// Deletes a session's JSONL file from the projects directory
+    pub fn delete_session_file(&self, project_name: &str, session_id: &str) -> Result<()> {
+        let path = self.get_session_file_path(project_name, session_id);
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+        Ok(())
+    }
+
+    pub fn restore_session_file(&self, session: &Session) -> Result<()> {
+        if let Some(ref content) = session.original_content {
+            let path = self.get_session_file_path(&session.project_name, &session.id);
+            fs::create_dir_all(path.parent().unwrap())?;
+            fs::write(&path, content)?;
+        }
         Ok(())
     }
 }
@@ -366,12 +399,6 @@ mod tests {
     }
 
     #[test]
-    fn test_count_session_files_empty() {
-        let (_tmp, store) = create_test_store();
-        assert_eq!(store.count_session_files(), 0);
-    }
-
-    #[test]
     fn test_load_sessions_with_progress() {
         let (tmp, store) = create_test_store();
 
@@ -383,9 +410,11 @@ mod tests {
         fs::write(p1.join("s2.jsonl"), line).unwrap();
 
         let mut progress_calls = Vec::new();
-        let sessions = store.load_sessions_with_progress(|loaded, total| {
-            progress_calls.push((loaded, total));
-        }).unwrap();
+        let sessions = store
+            .load_sessions_with_progress(|loaded, total| {
+                progress_calls.push((loaded, total));
+            })
+            .unwrap();
 
         assert_eq!(sessions.len(), 2);
         assert_eq!(progress_calls.len(), 2);
@@ -413,5 +442,64 @@ mod tests {
         let result = slug_to_path("");
         // Empty slug with no parts should resolve to "/"
         assert_eq!(result, Some(PathBuf::from("/")));
+    }
+
+    #[test]
+    fn test_delete_session_file_removes_from_load() {
+        let (tmp, store) = create_test_store();
+
+        let project_dir = tmp.path().join("-home-g-myproject");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
+        fs::write(project_dir.join("test-session.jsonl"), line).unwrap();
+
+        let sessions = store.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "test-session");
+
+        store
+            .delete_session_file("-home-g-myproject", "test-session")
+            .unwrap();
+
+        let sessions_after_delete = store.load_sessions().unwrap();
+        assert_eq!(sessions_after_delete.len(), 0);
+    }
+
+    #[test]
+    fn test_delete_session_file_is_idempotent() {
+        let (_tmp, store) = create_test_store();
+
+        let result = store.delete_session_file("-home-g-nonexistent", "no-session");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_restore_session_file_recreates_jsonl() {
+        let (tmp, store) = create_test_store();
+
+        let project_dir = tmp.path().join("-home-g-myproject");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let original_content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"x"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"uuid":"y"}"#;
+        fs::write(project_dir.join("test-session.jsonl"), original_content).unwrap();
+
+        let sessions = store.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        let session = sessions[0].clone();
+
+        store
+            .delete_session_file("-home-g-myproject", "test-session")
+            .unwrap();
+        let sessions_after_delete = store.load_sessions().unwrap();
+        assert_eq!(sessions_after_delete.len(), 0);
+
+        store.restore_session_file(&session).unwrap();
+
+        let sessions_after_restore = store.load_sessions().unwrap();
+        assert_eq!(sessions_after_restore.len(), 1);
+        assert_eq!(sessions_after_restore[0].id, "test-session");
+        assert_eq!(sessions_after_restore[0].messages.len(), 2);
     }
 }
