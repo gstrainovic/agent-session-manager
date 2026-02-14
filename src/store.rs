@@ -57,6 +57,7 @@ impl SessionStore {
         }
     }
 
+    #[cfg(test)]
     pub fn load_sessions(&self) -> Result<Vec<Session>> {
         let mut sessions = Vec::new();
 
@@ -95,6 +96,84 @@ impl SessionStore {
                 {
                     sessions.push(session);
                 }
+            }
+        }
+
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+        Ok(sessions)
+    }
+
+    pub fn count_session_files(&self) -> usize {
+        if !self.projects_path.exists() {
+            return 0;
+        }
+
+        let mut count = 0;
+        if let Ok(entries) = fs::read_dir(&self.projects_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Ok(files) = fs::read_dir(&path) {
+                        for file in files.flatten() {
+                            if file.path().extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn load_sessions_with_progress<F>(&self, mut on_progress: F) -> Result<Vec<Session>>
+    where
+        F: FnMut(usize, usize),
+    {
+        let mut sessions = Vec::new();
+
+        if !self.projects_path.exists() {
+            return Ok(sessions);
+        }
+
+        let total = self.count_session_files();
+        let mut loaded = 0;
+
+        for project_entry in fs::read_dir(&self.projects_path)? {
+            let project_entry = project_entry?;
+            let project_path = project_entry.path();
+
+            if !project_path.is_dir() {
+                continue;
+            }
+
+            let project_slug = project_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let resolved_path = slug_to_path(&project_slug)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| project_slug.clone());
+
+            for file_entry in fs::read_dir(&project_path)? {
+                let file_entry = file_entry?;
+                let file_path = file_entry.path();
+
+                if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+
+                if let Ok(session) =
+                    self.load_session_from_jsonl(&file_path, &project_slug, &resolved_path)
+                {
+                    sessions.push(session);
+                }
+
+                loaded += 1;
+                on_progress(loaded, total);
             }
         }
 
@@ -266,6 +345,52 @@ mod tests {
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].id, "new-session");
         assert_eq!(sessions[1].id, "old-session");
+    }
+
+    #[test]
+    fn test_count_session_files() {
+        let (tmp, store) = create_test_store();
+
+        let p1 = tmp.path().join("project-a");
+        let p2 = tmp.path().join("project-b");
+        fs::create_dir_all(&p1).unwrap();
+        fs::create_dir_all(&p2).unwrap();
+
+        let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
+        fs::write(p1.join("s1.jsonl"), line).unwrap();
+        fs::write(p1.join("s2.jsonl"), line).unwrap();
+        fs::write(p2.join("s3.jsonl"), line).unwrap();
+        fs::write(p2.join("not-a-session.txt"), "ignore").unwrap();
+
+        assert_eq!(store.count_session_files(), 3);
+    }
+
+    #[test]
+    fn test_count_session_files_empty() {
+        let (_tmp, store) = create_test_store();
+        assert_eq!(store.count_session_files(), 0);
+    }
+
+    #[test]
+    fn test_load_sessions_with_progress() {
+        let (tmp, store) = create_test_store();
+
+        let p1 = tmp.path().join("project-a");
+        fs::create_dir_all(&p1).unwrap();
+
+        let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
+        fs::write(p1.join("s1.jsonl"), line).unwrap();
+        fs::write(p1.join("s2.jsonl"), line).unwrap();
+
+        let mut progress_calls = Vec::new();
+        let sessions = store.load_sessions_with_progress(|loaded, total| {
+            progress_calls.push((loaded, total));
+        }).unwrap();
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(progress_calls.len(), 2);
+        assert_eq!(progress_calls[0].1, 2); // total is always 2
+        assert_eq!(progress_calls[1], (2, 2)); // last call: all loaded
     }
 
     #[test]

@@ -23,7 +23,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let app = App::new();
+    // Load sessions with progress bar
+    let store = store::SessionStore::new();
+    let sessions = store.load_sessions_with_progress(|loaded, total| {
+        let _ = terminal.draw(|f| {
+            ui::draw_loading(f, loaded, total);
+        });
+    }).unwrap_or_default();
+
+    let trash = store.load_trash().unwrap_or_default();
+    let app = App::new(sessions, trash);
     let res = run_app(&mut terminal, app);
 
     disable_raw_mode()?;

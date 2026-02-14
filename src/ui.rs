@@ -7,6 +7,42 @@ use ratatui::{
     Frame,
 };
 
+pub fn draw_loading(f: &mut Frame, loaded: usize, total: usize) {
+    let area = f.area();
+    let percent = if total > 0 { (loaded * 100) / total } else { 0 };
+
+    let gauge = ratatui::widgets::Gauge::default()
+        .block(
+            Block::default()
+                .title(" Loading Sessions ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        )
+        .gauge_style(Style::default().fg(Color::Green).bg(Color::Black))
+        .percent(percent as u16)
+        .label(format!("{}/{}", loaded, total));
+
+    let centered = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(45),
+            Constraint::Length(3),
+            Constraint::Percentage(45),
+        ])
+        .split(area);
+
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(20),
+            Constraint::Percentage(60),
+            Constraint::Percentage(20),
+        ])
+        .split(centered[1]);
+
+    f.render_widget(gauge, horizontal[1]);
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)

@@ -39,11 +39,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
-        let store = SessionStore::new();
-        let sessions = store.load_sessions().unwrap_or_default();
-        let trash = store.load_trash().unwrap_or_default();
-
+    pub fn new(sessions: Vec<Session>, trash: Vec<Session>) -> Self {
         Self {
             current_tab: Tab::Sessions,
             sessions,
