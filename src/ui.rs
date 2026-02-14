@@ -114,18 +114,41 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
 fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     let filtered = app.filtered_sessions();
 
+    let sort_arrow = match app.sort_direction {
+        crate::app::SortDirection::Ascending => "▲",
+        crate::app::SortDirection::Descending => "▼",
+    };
+
+    let project_header = if app.sort_field == crate::app::SortField::Project {
+        format!("Project {}", sort_arrow)
+    } else {
+        "Project".to_string()
+    };
+
+    let date_header = if app.sort_field == crate::app::SortField::Date {
+        format!("Date {}", sort_arrow)
+    } else {
+        "Date".to_string()
+    };
+
+    let msgs_header = if app.sort_field == crate::app::SortField::Messages {
+        format!("Msgs {}", sort_arrow)
+    } else {
+        "Msgs".to_string()
+    };
+
     let header = Row::new(vec![
-        Cell::from("Project").style(
+        Cell::from(project_header).style(
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Cell::from("ID").style(
+        Cell::from(date_header).style(
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Cell::from("Msgs").style(
+        Cell::from(msgs_header).style(
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
@@ -136,15 +159,12 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     let rows: Vec<Row> = filtered
         .iter()
         .map(|session| {
-            let short_id = if session.id.len() > 8 {
-                &session.id[..8]
-            } else {
-                &session.id
-            };
+            // Format date as yyyy-mm-dd hh:mm
+            let formatted_date = format_datetime(&session.updated_at);
 
             Row::new(vec![
                 Cell::from(session.project_name.as_str()),
-                Cell::from(short_id.to_string()),
+                Cell::from(formatted_date),
                 Cell::from(format!("{}", session.messages.len())),
             ])
             .style(Style::default().fg(Color::White))
@@ -158,8 +178,8 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
 
     let widths = [
         Constraint::Min(12),
-        Constraint::Length(10),
-        Constraint::Length(5),
+        Constraint::Length(16),
+        Constraint::Length(7),
     ];
 
     let table = Table::new(rows, widths)
@@ -186,6 +206,16 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     state.select(Some(app.selected_session_idx));
 
     f.render_stateful_widget(table, area, &mut state);
+}
+
+fn format_datetime(iso_string: &str) -> String {
+    if iso_string.len() >= 16 {
+        let date_part = &iso_string[0..10];
+        let time_part = &iso_string[11..16];
+        format!("{} {}", date_part, time_part)
+    } else {
+        iso_string.to_string()
+    }
 }
 
 fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
@@ -324,12 +354,10 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw("elete  "),
                     Span::styled("[e]", Style::default().fg(Color::Yellow)),
                     Span::raw("xport  "),
-                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" focus  "),
-                    Span::styled("[PgUp/PgDn]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" page  "),
-                    Span::styled("[0]", Style::default().fg(Color::Red)),
-                    Span::raw(" trash 0msg  "),
+                    Span::styled("[s]", Style::default().fg(Color::Magenta)),
+                    Span::raw(" sort  "),
+                    Span::styled("[S]", Style::default().fg(Color::Magenta)),
+                    Span::raw(" dir  "),
                     Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
                     Span::raw(" search  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
@@ -343,7 +371,11 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::styled("[d]", Style::default().fg(Color::Red)),
                     Span::raw("elete  "),
                     Span::styled("[t]", Style::default().fg(Color::Red)),
-                    Span::raw(" empty trash  "),
+                    Span::raw(" empty  "),
+                    Span::styled("[s]", Style::default().fg(Color::Magenta)),
+                    Span::raw(" sort  "),
+                    Span::styled("[S]", Style::default().fg(Color::Magenta)),
+                    Span::raw(" dir  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
                     Span::raw("uit"),
                 ]

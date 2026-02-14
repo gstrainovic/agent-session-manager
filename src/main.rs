@@ -232,6 +232,23 @@ fn handle_key_event(
                 }
             }
         }
+        KeyCode::Char('s') if !app.show_search => {
+            app.toggle_sort();
+            let sort_name = match app.sort_field {
+                crate::app::SortField::Project => "project",
+                crate::app::SortField::Messages => "messages",
+                crate::app::SortField::Date => "date",
+            };
+            app.set_status(format!("Sorted by: {}", sort_name));
+        }
+        KeyCode::Char('S') if !app.show_search => {
+            app.toggle_sort_direction();
+            let dir_name = match app.sort_direction {
+                crate::app::SortDirection::Ascending => "ascending",
+                crate::app::SortDirection::Descending => "descending",
+            };
+            app.set_status(format!("Sort direction: {}", dir_name));
+        }
         _ if app.show_search => match key.code {
             KeyCode::Char(c) => app.add_search_char(c),
             KeyCode::Backspace => app.pop_search_char(),

@@ -14,6 +14,19 @@ pub enum FocusPanel {
     Preview,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortField {
+    Project,
+    Messages,
+    Date,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortDirection {
+    Ascending,
+    Descending,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfirmAction {
     DeleteToTrash(String),     // Session ID to move to trash
@@ -36,6 +49,8 @@ pub struct App {
     pub resume_session_id: Option<String>,
     pub resume_session_path: Option<String>,
     pub focus: FocusPanel,
+    pub sort_field: SortField,
+    pub sort_direction: SortDirection,
 }
 
 impl App {
@@ -54,6 +69,8 @@ impl App {
             resume_session_id: None,
             resume_session_path: None,
             focus: FocusPanel::List,
+            sort_field: SortField::Date,
+            sort_direction: SortDirection::Descending,
         }
     }
 
@@ -73,6 +90,8 @@ impl App {
             resume_session_id: None,
             resume_session_path: None,
             focus: FocusPanel::List,
+            sort_field: SortField::Date,
+            sort_direction: SortDirection::Descending,
         }
     }
 
@@ -159,7 +178,7 @@ impl App {
     pub fn filtered_sessions(&self) -> Vec<&Session> {
         let list = self.current_list();
 
-        if self.search_query.is_empty() {
+        let mut filtered: Vec<&Session> = if self.search_query.is_empty() {
             list.iter().collect()
         } else {
             let q = self.search_query.to_lowercase();
@@ -172,7 +191,38 @@ impl App {
                             .any(|m| m.content.to_lowercase().contains(&q))
                 })
                 .collect()
-        }
+        };
+
+        filtered.sort_by(|a, b| {
+            let ordering = match self.sort_field {
+                SortField::Project => a.project_name.cmp(&b.project_name),
+                SortField::Messages => a.messages.len().cmp(&b.messages.len()),
+                SortField::Date => a.updated_at.cmp(&b.updated_at),
+            };
+
+            match self.sort_direction {
+                SortDirection::Ascending => ordering,
+                SortDirection::Descending => ordering.reverse(),
+            }
+        });
+
+        filtered
+    }
+
+    pub fn toggle_sort(&mut self) {
+        self.sort_field = match self.sort_field {
+            SortField::Project => SortField::Messages,
+            SortField::Messages => SortField::Date,
+            SortField::Date => SortField::Project,
+        };
+        self.sort_direction = SortDirection::Descending;
+    }
+
+    pub fn toggle_sort_direction(&mut self) {
+        self.sort_direction = match self.sort_direction {
+            SortDirection::Ascending => SortDirection::Descending,
+            SortDirection::Descending => SortDirection::Ascending,
+        };
     }
 
     pub fn toggle_search(&mut self) {
