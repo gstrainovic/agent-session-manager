@@ -10,6 +10,8 @@ pub struct Session {
     pub size: u64,
     pub total_entries: usize,
     pub messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,7 @@ impl Session {
             size: 0,
             total_entries: 0,
             messages: Vec::new(),
+            original_content: None,
         }
     }
 
@@ -139,7 +142,8 @@ mod tests {
 
     #[test]
     fn test_parse_jsonl_user_message_string_content() {
-        let line = r#"{"type":"user","message":{"role":"user","content":"hello world"},"uuid":"abc"}"#;
+        let line =
+            r#"{"type":"user","message":{"role":"user","content":"hello world"},"uuid":"abc"}"#;
         let messages = parse_jsonl_messages(line);
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
@@ -195,7 +199,10 @@ mod tests {
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"uuid":"y"}
 {"type":"queue-operation","operation":"dequeue","timestamp":"2026-01-01T00:00:00Z"}"#;
         let total = count_jsonl_entries(content);
-        assert_eq!(total, 5, "Should count all valid JSONL entries, not just user/assistant");
+        assert_eq!(
+            total, 5,
+            "Should count all valid JSONL entries, not just user/assistant"
+        );
     }
 
     #[test]

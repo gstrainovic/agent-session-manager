@@ -97,10 +97,7 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     let tabs = vec![
         Span::styled(format!("  Sessions ({})  ", session_count), sessions_style),
         Span::styled(format!("  Trash ({})  ", trash_count), trash_style),
-        Span::styled(
-            "  [Tab] to switch  ",
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled("  [Tab] to switch  ", Style::default().fg(Color::DarkGray)),
     ];
 
     let tabs_line = Line::from(tabs);
@@ -118,9 +115,21 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
     let filtered = app.filtered_sessions();
 
     let header = Row::new(vec![
-        Cell::from("Project").style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        Cell::from("ID").style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        Cell::from("Msgs").style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Cell::from("Project").style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("ID").style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("Msgs").style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
     ])
     .bottom_margin(0);
 
@@ -159,9 +168,11 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .title(title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(
-                    if app.focus == FocusPanel::List { Color::Green } else { Color::DarkGray }
-                )),
+                .border_style(Style::default().fg(if app.focus == FocusPanel::List {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                })),
         )
         .row_highlight_style(
             Style::default()
@@ -253,9 +264,11 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
                 Block::default()
                     .title(" Preview ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(
-                        if app.focus == FocusPanel::Preview { Color::Yellow } else { Color::DarkGray }
-                    )),
+                    .border_style(Style::default().fg(if app.focus == FocusPanel::Preview {
+                        Color::Yellow
+                    } else {
+                        Color::DarkGray
+                    })),
             )
             .style(Style::default().bg(Color::Black))
             .wrap(Wrap { trim: false })
@@ -354,8 +367,8 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
 fn sanitize_for_display(text: &str) -> String {
     text.chars()
         .map(|c| match c as u32 {
-            0x2600..=0x26FF => ' ', // Miscellaneous Symbols (⛁, ⛀, ⛶, etc.)
-            0x2700..=0x27BF => ' ', // Dingbats
+            0x2600..=0x26FF => ' ',   // Miscellaneous Symbols (⛁, ⛀, ⛶, etc.)
+            0x2700..=0x27BF => ' ',   // Dingbats
             0x1F300..=0x1F9FF => ' ', // Miscellaneous Symbols and Pictographs, Emoticons, etc.
             0x1FA00..=0x1FAFF => ' ', // Supplemental Symbols
             _ => c,
@@ -391,6 +404,7 @@ mod tests {
             size: 1024,
             total_entries: messages.len() + 3,
             messages,
+            original_content: None,
         }
     }
 
@@ -410,9 +424,7 @@ mod tests {
 
     #[test]
     fn test_renders_session_list_header() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![]),
-        ]);
+        let app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
         let output = render_to_string(&app, 100, 20);
         assert!(output.contains("Sessions"), "Should show Sessions tab");
         assert!(output.contains("my-project"), "Should show project name");
@@ -420,27 +432,31 @@ mod tests {
 
     #[test]
     fn test_renders_message_count() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "test-proj", vec![
-                make_msg("user", "Hello"),
-                make_msg("assistant", "Hi there"),
-            ]),
-        ]);
+        let app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "test-proj",
+            vec![make_msg("user", "Hello"), make_msg("assistant", "Hi there")],
+        )]);
         let output = render_to_string(&app, 100, 20);
         assert!(output.contains("2"), "Should show message count of 2");
     }
 
     #[test]
     fn test_renders_preview_for_selected_session() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![
+        let app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "my-project",
+            vec![
                 make_msg("user", "How do I test TUIs?"),
                 make_msg("assistant", "Use TestBackend from ratatui"),
-            ]),
-        ]);
+            ],
+        )]);
         let output = render_to_string(&app, 100, 20);
         assert!(output.contains("Preview"), "Should show Preview panel");
-        assert!(output.contains("How do I test TUIs"), "Should show user message in preview");
+        assert!(
+            output.contains("How do I test TUIs"),
+            "Should show user message in preview"
+        );
     }
 
     #[test]
@@ -448,35 +464,46 @@ mod tests {
         let app = App::with_sessions(vec![]);
         let output = render_to_string(&app, 100, 20);
         assert!(output.contains("Sessions (0)"), "Should show 0 sessions");
-        assert!(output.contains("No session selected"), "Should show empty state message");
+        assert!(
+            output.contains("No session selected"),
+            "Should show empty state message"
+        );
     }
 
     #[test]
     fn test_selection_moves_preview() {
         let mut app = App::with_sessions(vec![
-            make_session("aaa11111-0000", "first-project", vec![
-                make_msg("user", "First message"),
-            ]),
-            make_session("bbb22222-0000", "second-project", vec![
-                make_msg("user", "Second message"),
-            ]),
+            make_session(
+                "aaa11111-0000",
+                "first-project",
+                vec![make_msg("user", "First message")],
+            ),
+            make_session(
+                "bbb22222-0000",
+                "second-project",
+                vec![make_msg("user", "Second message")],
+            ),
         ]);
 
         // Initially first session selected
         let output = render_to_string(&app, 100, 20);
-        assert!(output.contains("First message"), "Should show first session preview");
+        assert!(
+            output.contains("First message"),
+            "Should show first session preview"
+        );
 
         // Move selection down
         app.select_next();
         let output = render_to_string(&app, 100, 20);
-        assert!(output.contains("Second message"), "Should show second session preview");
+        assert!(
+            output.contains("Second message"),
+            "Should show second session preview"
+        );
     }
 
     #[test]
     fn test_search_modal_renders() {
-        let mut app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![]),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
         app.show_search = true;
         app.search_query = "test".to_string();
 
@@ -487,20 +514,26 @@ mod tests {
 
     #[test]
     fn test_truncated_session_id_in_list() {
-        let app = App::with_sessions(vec![
-            make_session("abcdef12-3456-7890-abcd-ef1234567890", "proj", vec![]),
-        ]);
+        let app = App::with_sessions(vec![make_session(
+            "abcdef12-3456-7890-abcd-ef1234567890",
+            "proj",
+            vec![],
+        )]);
         let output = render_to_string(&app, 100, 20);
-        assert!(output.contains("abcdef12"), "List should show truncated ID (first 8 chars)");
+        assert!(
+            output.contains("abcdef12"),
+            "List should show truncated ID (first 8 chars)"
+        );
         // Full ID is shown in Preview panel - that's correct
-        assert!(output.contains("abcdef12-3456-7890"), "Preview should show full ID");
+        assert!(
+            output.contains("abcdef12-3456-7890"),
+            "Preview should show full ID"
+        );
     }
 
     #[test]
     fn test_commands_bar_shows_keybindings() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![]),
-        ]);
+        let app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
         let output = render_to_string(&app, 100, 20);
         assert!(output.contains("resume"), "Should show resume command");
         assert!(output.contains("elete"), "Should show delete command");
@@ -522,7 +555,10 @@ mod tests {
     fn test_sanitize_keeps_normal_text() {
         let input = "Hello, Welt! Ärger mit Ümlauten.";
         let result = sanitize_for_display(input);
-        assert_eq!(result, input, "Normal text including umlauts should be unchanged");
+        assert_eq!(
+            result, input,
+            "Normal text including umlauts should be unchanged"
+        );
     }
 
     #[test]
@@ -534,11 +570,11 @@ mod tests {
 
     #[test]
     fn test_preview_with_problematic_unicode_renders_clean() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "project", vec![
-                make_msg("user", "⛁ Active 30+ ⛁ files ⛶ custom stack"),
-            ]),
-        ]);
+        let app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "project",
+            vec![make_msg("user", "⛁ Active 30+ ⛁ files ⛶ custom stack")],
+        )]);
         let output = render_to_string(&app, 100, 20);
         assert!(!output.contains('⛁'), "Preview should not contain ⛁");
         assert!(output.contains("Active 30+"), "Should keep normal text");
@@ -546,11 +582,11 @@ mod tests {
 
     #[test]
     fn test_preview_shows_entries_and_messages() {
-        let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![
-                make_msg("user", "Hello"),
-            ]),
-        ]);
+        let app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "my-project",
+            vec![make_msg("user", "Hello")],
+        )]);
         let output = render_to_string(&app, 100, 20);
         // Preview should show both messages count and total entries
         assert!(output.contains("Messages:"), "Should show Messages label");
@@ -560,13 +596,19 @@ mod tests {
     #[test]
     fn test_snapshot_initial_render() {
         let app = App::with_sessions(vec![
-            make_session("abc12345-6789", "my-project", vec![
-                make_msg("user", "Hello, how are you?"),
-                make_msg("assistant", "I am doing well, thank you!"),
-            ]),
-            make_session("def98765-4321", "other-project", vec![
-                make_msg("user", "What is Rust?"),
-            ]),
+            make_session(
+                "abc12345-6789",
+                "my-project",
+                vec![
+                    make_msg("user", "Hello, how are you?"),
+                    make_msg("assistant", "I am doing well, thank you!"),
+                ],
+            ),
+            make_session(
+                "def98765-4321",
+                "other-project",
+                vec![make_msg("user", "What is Rust?")],
+            ),
         ]);
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();

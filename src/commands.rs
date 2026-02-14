@@ -4,20 +4,20 @@ use std::fs;
 use std::io::Write;
 
 pub fn delete_session(_session: &Session) -> Result<()> {
-    let trash_dir = dirs::home_dir()
-        .expect("home dir")
-        .join(".claude/trash");
+    let trash_dir = dirs::home_dir().expect("home dir").join(".claude/trash");
     fs::create_dir_all(&trash_dir)?;
     Ok(())
 }
 
 pub fn export_session(session: &Session) -> Result<String> {
-    let export_dir = dirs::home_dir()
-        .expect("home dir")
-        .join("claude-exports");
+    let export_dir = dirs::home_dir().expect("home dir").join("claude-exports");
     fs::create_dir_all(&export_dir)?;
 
-    let filename = format!("{}-{}.md", session.project_name, &session.id[..8.min(session.id.len())]);
+    let filename = format!(
+        "{}-{}.md",
+        session.project_name,
+        &session.id[..8.min(session.id.len())]
+    );
     let path = export_dir.join(&filename);
 
     let mut file = fs::File::create(&path)?;
@@ -71,6 +71,7 @@ mod tests {
                     content: "Hi there".to_string(),
                 },
             ],
+            original_content: None,
         }
     }
 
