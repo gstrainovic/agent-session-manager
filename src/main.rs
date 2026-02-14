@@ -25,11 +25,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Load sessions with progress bar
     let store = store::SessionStore::new();
-    let sessions = store.load_sessions_with_progress(|loaded, total| {
-        let _ = terminal.draw(|f| {
-            ui::draw_loading(f, loaded, total);
-        });
-    }).unwrap_or_default();
+    let sessions = store
+        .load_sessions_with_progress(|loaded, total| {
+            let _ = terminal.draw(|f| {
+                ui::draw_loading(f, loaded, total);
+            });
+        })
+        .unwrap_or_default();
 
     let trash = store.load_trash().unwrap_or_default();
     let app = App::new(sessions, trash);
@@ -42,9 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match res {
         Ok(Some((command, path))) => {
             // Build shell command: clear && cd <project> && claude --resume <id>
-            let session_id = command
-                .strip_prefix("claude --resume ")
-                .unwrap_or_default();
+            let session_id = command.strip_prefix("claude --resume ").unwrap_or_default();
 
             let shell_cmd = match path {
                 Some(project_path) => format!(
@@ -76,7 +76,10 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<Option<(String, Option<String>)>> {
+fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    mut app: App,
+) -> io::Result<Option<(String, Option<String>)>> {
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
         app.clear_expired_status();
@@ -101,13 +104,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<O
                     break;
                 }
             }
-
-
         }
     }
 }
 
-fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Option<(String, Option<String>)>>> {
+fn handle_key_event(
+    app: &mut App,
+    key: event::KeyEvent,
+) -> Option<io::Result<Option<(String, Option<String>)>>> {
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => {
             if app.is_confirmation_pending() {
@@ -118,14 +122,18 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
                 return Some(Ok(None));
             }
         }
-        KeyCode::Char('f')
-            if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
-        {
+        KeyCode::Char('f') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
             app.toggle_search();
         }
         KeyCode::Tab if !app.show_search => app.switch_tab(),
-        KeyCode::Up if !app.show_search => app.select_prev(),
-        KeyCode::Down if !app.show_search => app.select_next(),
+        KeyCode::Up if !app.show_search => match app.focus {
+            crate::app::FocusPanel::List => app.select_prev(),
+            crate::app::FocusPanel::Preview => app.preview_scroll_up(1),
+        },
+        KeyCode::Down if !app.show_search => match app.focus {
+            crate::app::FocusPanel::List => app.select_next(),
+            crate::app::FocusPanel::Preview => app.preview_scroll_down(1),
+        },
         KeyCode::Left if !app.show_search => app.focus_left(),
         KeyCode::Right if !app.show_search => app.focus_right(),
         KeyCode::PageDown if !app.show_search => app.page_down(10),
@@ -184,7 +192,9 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
                             }
                         }
                     }
-                    ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash | ConfirmAction::TrashZeroMessages => {
+                    ConfirmAction::DeletePermanently(_)
+                    | ConfirmAction::EmptyTrash
+                    | ConfirmAction::TrashZeroMessages => {
                         app.confirm_and_execute();
                     }
                 }

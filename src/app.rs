@@ -148,6 +148,14 @@ impl App {
         }
     }
 
+    pub fn preview_scroll_up(&mut self, amount: u16) {
+        self.preview_scroll = self.preview_scroll.saturating_sub(amount);
+    }
+
+    pub fn preview_scroll_down(&mut self, amount: u16) {
+        self.preview_scroll = self.preview_scroll.saturating_add(amount);
+    }
+
     pub fn filtered_sessions(&self) -> Vec<&Session> {
         let list = self.current_list();
 
