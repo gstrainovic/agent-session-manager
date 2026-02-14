@@ -213,7 +213,7 @@ fn handle_key_event(
                 app.request_trash_zero_messages();
             }
         }
-        KeyCode::Char('E') if !app.show_search => {
+        KeyCode::Char('t') if !app.show_search => {
             if app.is_confirmation_pending() {
                 app.confirm_and_execute();
             } else {

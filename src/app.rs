@@ -310,7 +310,7 @@ impl App {
 
         self.confirm_action = Some(ConfirmAction::EmptyTrash);
         self.set_status(format!(
-            "PERMANENTLY delete ALL {} sessions in trash? Press 'E' or 'y' to confirm, 'n' or Esc to cancel",
+            "PERMANENTLY delete ALL {} sessions in trash? Press 't' or 'y' to confirm, 'n' or Esc to cancel",
             count
         ));
     }
