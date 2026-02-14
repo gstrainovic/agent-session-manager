@@ -444,8 +444,10 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
 
     f.render_widget(Clear, popup_area);
 
-    let help_text = include_str!("../README.md");
-    let lines: Vec<&str> = help_text.lines().collect();
+    let help_text = std::fs::read_to_string("README.md")
+        .or_else(|_| std::fs::read_to_string("/home/g/workspace/agent-session-manager/README.md"))
+        .unwrap_or_else(|_| "README.md not found".to_string());
+    let lines: Vec<String> = help_text.lines().map(|s| s.to_string()).collect();
 
     let visible_lines: Vec<Line> = lines
         .iter()
@@ -454,31 +456,31 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         .map(|line| {
             let styled_line = if line.starts_with("# ") {
                 Line::from(vec![Span::styled(
-                    line.to_string(),
+                    line.clone(),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 )])
             } else if line.starts_with("## ") {
                 Line::from(vec![Span::styled(
-                    line.to_string(),
+                    line.clone(),
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
                 )])
             } else if line.starts_with("### ") {
                 Line::from(vec![Span::styled(
-                    line.to_string(),
+                    line.clone(),
                     Style::default().fg(Color::Green),
                 )])
             } else if line.starts_with("| ") || line.starts_with("|-") {
                 Line::from(vec![Span::styled(
-                    line.to_string(),
+                    line.clone(),
                     Style::default().fg(Color::White),
                 )])
             } else if line.starts_with("```") {
                 Line::from(vec![Span::styled(
-                    line.to_string(),
+                    line.clone(),
                     Style::default().fg(Color::DarkGray),
                 )])
             } else {
