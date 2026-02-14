@@ -78,129 +78,140 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<O
             return Ok(Some((command, path)));
         }
 
+        // Wait for at least one event (with timeout for status message expiry)
         if crossterm::event::poll(std::time::Duration::from_millis(250))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
-                        if app.is_confirmation_pending() {
-                            app.cancel_confirmation();
-                        } else if app.show_search {
-                            app.show_search = false;
-                        } else {
-                            return Ok(None);
-                        }
+            // Drain all pending events before next draw to avoid rendering artifacts
+            loop {
+                if let Event::Key(key) = event::read()? {
+                    if let Some(result) = handle_key_event(&mut app, key) {
+                        return result;
                     }
-                    KeyCode::Char('f')
-                        if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                    {
-                        app.toggle_search();
-                    }
-                    KeyCode::Tab if !app.show_search => app.switch_tab(),
-                    KeyCode::Up if !app.show_search => app.select_prev(),
-                    KeyCode::Down if !app.show_search => app.select_next(),
-                    KeyCode::PageDown if !app.show_search => app.scroll_preview_down(),
-                    KeyCode::PageUp if !app.show_search => app.scroll_preview_up(),
-                    KeyCode::Enter if !app.show_search => {
-                        app.switch_to_selected_session();
-                    }
-                    KeyCode::Char('d') if !app.show_search => {
-                        if app.is_confirmation_pending() {
-                            // Confirmation pending - check action type
-                            use crate::app::ConfirmAction;
-                            if let Some(action) = &app.confirm_action {
-                                match action {
-                                    ConfirmAction::DeleteToTrash(_) => {
-                                        // Delete from sessions and move to trash
-                                        if let Some(session) = app.get_selected_session() {
-                                            let session_clone = session.clone();
-                                            match commands::delete_session(&session_clone) {
-                                                Ok(_) => {
-                                                    app.move_selected_to_trash();
-                                                    app.confirm_action = None;
-                                                }
-                                                Err(_e) => {
-                                                    app.set_status("Delete failed".to_string());
-                                                    app.confirm_action = None;
-                                                }
-                                            }
-                                        }
+                }
+                // Check if more events are immediately available
+                if !crossterm::event::poll(std::time::Duration::from_millis(0))? {
+                    break;
+                }
+            }
+
+
+        }
+    }
+}
+
+fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Option<(String, Option<String>)>>> {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => {
+            if app.is_confirmation_pending() {
+                app.cancel_confirmation();
+            } else if app.show_search {
+                app.show_search = false;
+            } else {
+                return Some(Ok(None));
+            }
+        }
+        KeyCode::Char('f')
+            if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
+        {
+            app.toggle_search();
+        }
+        KeyCode::Tab if !app.show_search => app.switch_tab(),
+        KeyCode::Up if !app.show_search => app.select_prev(),
+        KeyCode::Down if !app.show_search => app.select_next(),
+        KeyCode::PageDown if !app.show_search => app.scroll_preview_down(),
+        KeyCode::PageUp if !app.show_search => app.scroll_preview_up(),
+        KeyCode::Enter if !app.show_search => {
+            app.switch_to_selected_session();
+        }
+        KeyCode::Char('d') if !app.show_search => {
+            if app.is_confirmation_pending() {
+                use crate::app::ConfirmAction;
+                if let Some(action) = &app.confirm_action {
+                    match action {
+                        ConfirmAction::DeleteToTrash(_) => {
+                            if let Some(session) = app.get_selected_session() {
+                                let session_clone = session.clone();
+                                match commands::delete_session(&session_clone) {
+                                    Ok(_) => {
+                                        app.move_selected_to_trash();
+                                        app.confirm_action = None;
                                     }
-                                    ConfirmAction::DeletePermanently(_) => {
-                                        app.confirm_and_execute();
-                                    }
-                                    ConfirmAction::EmptyTrash => {
-                                        app.confirm_and_execute();
+                                    Err(_e) => {
+                                        app.set_status("Delete failed".to_string());
+                                        app.confirm_action = None;
                                     }
                                 }
                             }
-                        } else {
-                            // No confirmation pending - request confirmation
-                            app.request_delete_confirmation();
                         }
-                    }
-                    KeyCode::Char('y') if !app.show_search && app.is_confirmation_pending() => {
-                        // Confirm with 'y' - same logic as 'd'
-                        use crate::app::ConfirmAction;
-                        if let Some(action) = &app.confirm_action {
-                            match action {
-                                ConfirmAction::DeleteToTrash(_) => {
-                                    if let Some(session) = app.get_selected_session() {
-                                        let session_clone = session.clone();
-                                        match commands::delete_session(&session_clone) {
-                                            Ok(_) => {
-                                                app.move_selected_to_trash();
-                                                app.confirm_action = None;
-                                            }
-                                            Err(_e) => {
-                                                app.set_status("Delete failed".to_string());
-                                                app.confirm_action = None;
-                                            }
-                                        }
-                                    }
-                                }
-                                ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash => {
-                                    app.confirm_and_execute();
-                                }
-                            }
-                        }
-                    }
-                    KeyCode::Char('n') if !app.show_search && app.is_confirmation_pending() => {
-                        app.cancel_confirmation();
-                    }
-                    KeyCode::Char('r') if !app.show_search => {
-                        app.restore_selected_from_trash();
-                    }
-                    KeyCode::Char('E') if !app.show_search => {
-                        if app.is_confirmation_pending() {
-                            // Confirm empty trash with 'E'
+                        ConfirmAction::DeletePermanently(_) => {
                             app.confirm_and_execute();
-                        } else {
-                            // Request empty trash confirmation
-                            app.request_empty_trash();
+                        }
+                        ConfirmAction::EmptyTrash => {
+                            app.confirm_and_execute();
                         }
                     }
-                    KeyCode::Char('e') if !app.show_search => {
+                }
+            } else {
+                app.request_delete_confirmation();
+            }
+        }
+        KeyCode::Char('y') if !app.show_search && app.is_confirmation_pending() => {
+            use crate::app::ConfirmAction;
+            if let Some(action) = &app.confirm_action {
+                match action {
+                    ConfirmAction::DeleteToTrash(_) => {
                         if let Some(session) = app.get_selected_session() {
-                            match commands::export_session(session) {
-                                Ok(path) => {
-                                    app.set_status(format!("Exported to {}", path));
+                            let session_clone = session.clone();
+                            match commands::delete_session(&session_clone) {
+                                Ok(_) => {
+                                    app.move_selected_to_trash();
+                                    app.confirm_action = None;
                                 }
                                 Err(_e) => {
-                                    app.set_status("Export failed".to_string());
+                                    app.set_status("Delete failed".to_string());
+                                    app.confirm_action = None;
                                 }
                             }
                         }
                     }
-                    _ if app.show_search => match key.code {
-                        KeyCode::Char(c) => app.add_search_char(c),
-                        KeyCode::Backspace => app.pop_search_char(),
-                        KeyCode::Esc => app.show_search = false,
-                        KeyCode::Enter => app.show_search = false,
-                        _ => {}
-                    },
-                    _ => {}
+                    ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash => {
+                        app.confirm_and_execute();
+                    }
                 }
             }
         }
+        KeyCode::Char('n') if !app.show_search && app.is_confirmation_pending() => {
+            app.cancel_confirmation();
+        }
+        KeyCode::Char('r') if !app.show_search => {
+            app.restore_selected_from_trash();
+        }
+        KeyCode::Char('E') if !app.show_search => {
+            if app.is_confirmation_pending() {
+                app.confirm_and_execute();
+            } else {
+                app.request_empty_trash();
+            }
+        }
+        KeyCode::Char('e') if !app.show_search => {
+            if let Some(session) = app.get_selected_session() {
+                match commands::export_session(session) {
+                    Ok(path) => {
+                        app.set_status(format!("Exported to {}", path));
+                    }
+                    Err(_e) => {
+                        app.set_status("Export failed".to_string());
+                    }
+                }
+            }
+        }
+        _ if app.show_search => match key.code {
+            KeyCode::Char(c) => app.add_search_char(c),
+            KeyCode::Backspace => app.pop_search_char(),
+            KeyCode::Esc => app.show_search = false,
+            KeyCode::Enter => app.show_search = false,
+            _ => {}
+        },
+        _ => {}
     }
+    None
 }

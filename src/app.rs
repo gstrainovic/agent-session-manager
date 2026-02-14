@@ -362,6 +362,7 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
             size: 0,
+            total_entries: 1,
             messages: vec![Message {
                 role: "user".to_string(),
                 content: format!("msg in {}", id),

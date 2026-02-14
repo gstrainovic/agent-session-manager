@@ -132,6 +132,7 @@ impl SessionStore {
             .unwrap_or_default();
 
         let content = fs::read_to_string(path)?;
+        let total_entries = crate::models::count_jsonl_entries(&content);
         let messages = parse_jsonl_messages(&content);
 
         Ok(Session {
@@ -141,6 +142,7 @@ impl SessionStore {
             created_at: created,
             updated_at: modified,
             size: file_size,
+            total_entries,
             messages,
         })
     }

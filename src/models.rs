@@ -8,6 +8,7 @@ pub struct Session {
     pub created_at: String,
     pub updated_at: String,
     pub size: u64,
+    pub total_entries: usize,
     pub messages: Vec<Message>,
 }
 
@@ -32,6 +33,7 @@ impl Session {
             created_at: chrono::Local::now().to_rfc3339(),
             updated_at: chrono::Local::now().to_rfc3339(),
             size: 0,
+            total_entries: 0,
             messages: Vec::new(),
         }
     }
@@ -44,6 +46,13 @@ impl Session {
         };
         format!("{} ({})", self.project_name, short_id)
     }
+}
+
+pub fn count_jsonl_entries(content: &str) -> usize {
+    content
+        .lines()
+        .filter(|line| serde_json::from_str::<serde_json::Value>(line).is_ok())
+        .count()
 }
 
 pub fn parse_jsonl_messages(content: &str) -> Vec<Message> {
@@ -116,6 +125,7 @@ mod tests {
         assert_eq!(session.id, "test-id");
         assert_eq!(session.project_name, "my-project");
         assert_eq!(session.messages.len(), 0);
+        assert_eq!(session.total_entries, 0);
     }
 
     #[test]
@@ -175,5 +185,23 @@ mod tests {
         let lines = "not valid json\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"ok\"},\"uuid\":\"x\"}";
         let messages = parse_jsonl_messages(lines);
         assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn test_count_jsonl_entries() {
+        let content = r#"{"type":"file-history-snapshot","messageId":"abc","snapshot":{}}
+{"type":"progress","data":{"type":"hook_progress"}}
+{"type":"user","message":{"role":"user","content":"hello"},"uuid":"x"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"uuid":"y"}
+{"type":"queue-operation","operation":"dequeue","timestamp":"2026-01-01T00:00:00Z"}"#;
+        let total = count_jsonl_entries(content);
+        assert_eq!(total, 5, "Should count all valid JSONL entries, not just user/assistant");
+    }
+
+    #[test]
+    fn test_count_jsonl_entries_skips_invalid() {
+        let content = "not valid json\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"ok\"},\"uuid\":\"x\"}\n";
+        let total = count_jsonl_entries(content);
+        assert_eq!(total, 1, "Should skip invalid JSON lines");
     }
 }

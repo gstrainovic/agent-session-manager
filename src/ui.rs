@@ -90,17 +90,7 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
 
     let rows: Vec<Row> = filtered
         .iter()
-        .enumerate()
-        .map(|(idx, session)| {
-            let style = if idx == app.selected_session_idx {
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
+        .map(|session| {
             let short_id = if session.id.len() > 8 {
                 &session.id[..8]
             } else {
@@ -112,7 +102,7 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
                 Cell::from(short_id.to_string()),
                 Cell::from(format!("{}", session.messages.len())),
             ])
-            .style(style)
+            .style(Style::default().fg(Color::White))
         })
         .collect();
 
@@ -135,7 +125,12 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Green)),
         )
-        .row_highlight_style(Style::default().bg(Color::DarkGray));
+        .row_highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
 
     // Create TableState and select current index for automatic scrolling
     let mut state = ratatui::widgets::TableState::default();
@@ -167,6 +162,10 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
                 Span::styled("Messages: ", Style::default().fg(Color::Yellow)),
                 Span::raw(format!("{}", session.messages.len())),
             ]),
+            Line::from(vec![
+                Span::styled("Entries: ", Style::default().fg(Color::Yellow)),
+                Span::raw(format!("{}", session.total_entries)),
+            ]),
             Line::from(""),
             Line::from(Span::styled(
                 "─── Conversation ───",
@@ -194,14 +193,15 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
 
             lines.push(Line::from(Span::styled(prefix, style)));
 
-            let truncated = if msg.content.len() > 500 {
+            let sanitized = sanitize_for_display(&msg.content);
+            let truncated = if sanitized.len() > 500 {
                 let mut end = 500;
-                while !msg.content.is_char_boundary(end) {
+                while !sanitized.is_char_boundary(end) {
                     end -= 1;
                 }
-                format!("{}...", &msg.content[..end])
+                format!("{}...", &sanitized[..end])
             } else {
-                msg.content.clone()
+                sanitized
             };
 
             for text_line in truncated.lines() {
@@ -304,6 +304,21 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(bar, area);
 }
 
+/// Replaces Unicode characters with known terminal width mismatches.
+/// Characters in Miscellaneous Symbols (U+2600-U+26FF), Dingbats (U+2700-U+27BF),
+/// and emoji ranges have ambiguous widths that cause ratatui rendering artifacts.
+fn sanitize_for_display(text: &str) -> String {
+    text.chars()
+        .map(|c| match c as u32 {
+            0x2600..=0x26FF => ' ', // Miscellaneous Symbols (⛁, ⛀, ⛶, etc.)
+            0x2700..=0x27BF => ' ', // Dingbats
+            0x1F300..=0x1F9FF => ' ', // Miscellaneous Symbols and Pictographs, Emoticons, etc.
+            0x1FA00..=0x1FAFF => ' ', // Supplemental Symbols
+            _ => c,
+        })
+        .collect()
+}
+
 fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         format!("{} B", bytes)
@@ -311,5 +326,207 @@ fn format_size(bytes: u64) -> String {
         format!("{:.1} KB", bytes as f64 / 1024.0)
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use crate::models::{Message, Session};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn make_session(id: &str, project: &str, messages: Vec<Message>) -> Session {
+        Session {
+            id: id.to_string(),
+            project_path: format!("/home/g/{}", project),
+            project_name: project.to_string(),
+            created_at: "2026-01-15T10:00:00+01:00".to_string(),
+            updated_at: "2026-01-15T12:00:00+01:00".to_string(),
+            size: 1024,
+            total_entries: messages.len() + 3,
+            messages,
+        }
+    }
+
+    fn make_msg(role: &str, content: &str) -> Message {
+        Message {
+            role: role.to_string(),
+            content: content.to_string(),
+        }
+    }
+
+    fn render_to_string(app: &App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.backend().to_string()
+    }
+
+    #[test]
+    fn test_renders_session_list_header() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("Sessions"), "Should show Sessions tab");
+        assert!(output.contains("my-project"), "Should show project name");
+    }
+
+    #[test]
+    fn test_renders_message_count() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "test-proj", vec![
+                make_msg("user", "Hello"),
+                make_msg("assistant", "Hi there"),
+            ]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("2"), "Should show message count of 2");
+    }
+
+    #[test]
+    fn test_renders_preview_for_selected_session() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![
+                make_msg("user", "How do I test TUIs?"),
+                make_msg("assistant", "Use TestBackend from ratatui"),
+            ]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("Preview"), "Should show Preview panel");
+        assert!(output.contains("How do I test TUIs"), "Should show user message in preview");
+    }
+
+    #[test]
+    fn test_renders_empty_state() {
+        let app = App::with_sessions(vec![]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("Sessions (0)"), "Should show 0 sessions");
+        assert!(output.contains("No session selected"), "Should show empty state message");
+    }
+
+    #[test]
+    fn test_selection_moves_preview() {
+        let mut app = App::with_sessions(vec![
+            make_session("aaa11111-0000", "first-project", vec![
+                make_msg("user", "First message"),
+            ]),
+            make_session("bbb22222-0000", "second-project", vec![
+                make_msg("user", "Second message"),
+            ]),
+        ]);
+
+        // Initially first session selected
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("First message"), "Should show first session preview");
+
+        // Move selection down
+        app.select_next();
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("Second message"), "Should show second session preview");
+    }
+
+    #[test]
+    fn test_search_modal_renders() {
+        let mut app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![]),
+        ]);
+        app.show_search = true;
+        app.search_query = "test".to_string();
+
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("Search"), "Should show search modal");
+        assert!(output.contains("test"), "Should show search query");
+    }
+
+    #[test]
+    fn test_truncated_session_id_in_list() {
+        let app = App::with_sessions(vec![
+            make_session("abcdef12-3456-7890-abcd-ef1234567890", "proj", vec![]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("abcdef12"), "List should show truncated ID (first 8 chars)");
+        // Full ID is shown in Preview panel - that's correct
+        assert!(output.contains("abcdef12-3456-7890"), "Preview should show full ID");
+    }
+
+    #[test]
+    fn test_commands_bar_shows_keybindings() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(output.contains("resume"), "Should show resume command");
+        assert!(output.contains("elete"), "Should show delete command");
+        assert!(output.contains("search"), "Should show search command");
+    }
+
+    #[test]
+    fn test_sanitize_replaces_problematic_unicode() {
+        // These chars (Miscellaneous Symbols) cause width mismatches
+        let input = "⛁ Active files ⛀ board ⛶ custom";
+        let result = sanitize_for_display(input);
+        assert!(!result.contains('⛁'), "Should replace ⛁");
+        assert!(!result.contains('⛀'), "Should replace ⛀");
+        assert!(!result.contains('⛶'), "Should replace ⛶");
+        assert!(result.contains("Active files"), "Should keep regular text");
+    }
+
+    #[test]
+    fn test_sanitize_keeps_normal_text() {
+        let input = "Hello, Welt! Ärger mit Ümlauten.";
+        let result = sanitize_for_display(input);
+        assert_eq!(result, input, "Normal text including umlauts should be unchanged");
+    }
+
+    #[test]
+    fn test_sanitize_keeps_box_drawing() {
+        let input = "─── Conversation ───";
+        let result = sanitize_for_display(input);
+        assert_eq!(result, input, "Box drawing chars should be unchanged");
+    }
+
+    #[test]
+    fn test_preview_with_problematic_unicode_renders_clean() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "project", vec![
+                make_msg("user", "⛁ Active 30+ ⛁ files ⛶ custom stack"),
+            ]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        assert!(!output.contains('⛁'), "Preview should not contain ⛁");
+        assert!(output.contains("Active 30+"), "Should keep normal text");
+    }
+
+    #[test]
+    fn test_preview_shows_entries_and_messages() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![
+                make_msg("user", "Hello"),
+            ]),
+        ]);
+        let output = render_to_string(&app, 100, 20);
+        // Preview should show both messages count and total entries
+        assert!(output.contains("Messages:"), "Should show Messages label");
+        assert!(output.contains("Entries:"), "Should show Entries label");
+    }
+
+    #[test]
+    fn test_snapshot_initial_render() {
+        let app = App::with_sessions(vec![
+            make_session("abc12345-6789", "my-project", vec![
+                make_msg("user", "Hello, how are you?"),
+                make_msg("assistant", "I am doing well, thank you!"),
+            ]),
+            make_session("def98765-4321", "other-project", vec![
+                make_msg("user", "What is Rust?"),
+            ]),
+        ]);
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
     }
 }
