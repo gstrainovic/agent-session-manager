@@ -51,6 +51,8 @@ pub struct App {
     pub focus: FocusPanel,
     pub sort_field: SortField,
     pub sort_direction: SortDirection,
+    pub show_help: bool,
+    pub help_scroll: u16,
 }
 
 impl App {
@@ -71,6 +73,8 @@ impl App {
             focus: FocusPanel::List,
             sort_field: SortField::Date,
             sort_direction: SortDirection::Descending,
+            show_help: false,
+            help_scroll: 0,
         }
     }
 
@@ -92,6 +96,8 @@ impl App {
             focus: FocusPanel::List,
             sort_field: SortField::Date,
             sort_direction: SortDirection::Descending,
+            show_help: false,
+            help_scroll: 0,
         }
     }
 
@@ -223,6 +229,21 @@ impl App {
             SortDirection::Ascending => SortDirection::Descending,
             SortDirection::Descending => SortDirection::Ascending,
         };
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+        if !self.show_help {
+            self.help_scroll = 0;
+        }
+    }
+
+    pub fn help_scroll_up(&mut self, amount: u16) {
+        self.help_scroll = self.help_scroll.saturating_sub(amount);
+    }
+
+    pub fn help_scroll_down(&mut self, amount: u16) {
+        self.help_scroll = self.help_scroll.saturating_add(amount);
     }
 
     pub fn toggle_search(&mut self) {

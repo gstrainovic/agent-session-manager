@@ -72,6 +72,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     if app.show_search {
         draw_search_modal(f, app);
     }
+
+    if app.show_help {
+        draw_help_modal(f, app);
+    }
 }
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
@@ -358,8 +362,12 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw(" sort  "),
                     Span::styled("[S]", Style::default().fg(Color::Magenta)),
                     Span::raw(" dir  "),
+                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
+                    Span::raw(" focus  "),
                     Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
                     Span::raw(" search  "),
+                    Span::styled("[h]", Style::default().fg(Color::DarkGray)),
+                    Span::raw("elp  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
                     Span::raw("uit"),
                 ]
@@ -376,6 +384,10 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw(" sort  "),
                     Span::styled("[S]", Style::default().fg(Color::Magenta)),
                     Span::raw(" dir  "),
+                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
+                    Span::raw(" focus  "),
+                    Span::styled("[h]", Style::default().fg(Color::DarkGray)),
+                    Span::raw("elp  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
                     Span::raw("uit"),
                 ]
@@ -416,6 +428,79 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
+}
+
+fn draw_help_modal(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let width = (area.width as f32 * 0.8).min(100.0) as u16;
+    let height = (area.height as f32 * 0.8).min(40.0) as u16;
+
+    let popup_area = Rect {
+        x: (area.width - width) / 2,
+        y: (area.height - height) / 2,
+        width,
+        height,
+    };
+
+    f.render_widget(Clear, popup_area);
+
+    let help_text = include_str!("../README.md");
+    let lines: Vec<&str> = help_text.lines().collect();
+
+    let visible_lines: Vec<Line> = lines
+        .iter()
+        .skip(app.help_scroll as usize)
+        .take(height as usize - 2)
+        .map(|line| {
+            let styled_line = if line.starts_with("# ") {
+                Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )])
+            } else if line.starts_with("## ") {
+                Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )])
+            } else if line.starts_with("### ") {
+                Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Green),
+                )])
+            } else if line.starts_with("| ") || line.starts_with("|-") {
+                Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::White),
+                )])
+            } else if line.starts_with("```") {
+                Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::DarkGray),
+                )])
+            } else {
+                Line::from(vec![Span::styled(
+                    sanitize_for_display(line),
+                    Style::default().fg(Color::White),
+                )])
+            };
+            styled_line
+        })
+        .collect();
+
+    let help_widget = Paragraph::new(visible_lines)
+        .block(
+            Block::default()
+                .title(" Help (h to close, ↑/↓ to scroll) ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .wrap(Wrap { trim: false });
+
+    f.render_widget(help_widget, popup_area);
 }
 
 #[cfg(test)]

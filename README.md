@@ -7,12 +7,14 @@ Ein Terminal-basierter Session-Manager für Claude Code Sessions.
 
 ## Features
 
-- **Session-Übersicht**: Zeigt alle Claude Code Sessions mit Projekt-Informationen
+- **Session-Übersicht**: Zeigt alle Claude Code Sessions mit Projekt-Informationen, Datum und Nachrichtenanzahl
 - **Schnelle Navigation**: Wechsle einfach zwischen Sessions mit Pfeiltasten und Enter
+- **Sortierbare Spalten**: Sortiere nach Projektname, Nachrichtenanzahl oder Datum
 - **Suche**: Finde Sessions schnell mit `Ctrl+F`
 - **Message-Preview**: Zeigt Konversationsinhalt mit scrollbarer Vorschau
 - **Session-Export**: Exportiere Sessions als Markdown-Datei
 - **Trash-System**: Lösche und restore Sessions sicher
+- **Paralleles Laden**: Schnelles Laden großer Session-Mengen mit Multi-Threading
 - **TUI-Interface**: Intuitive Terminal-Oberfläche mit [ratatui](https://github.com/ratatui/ratatui)
 
 ## Screenshots
@@ -56,16 +58,22 @@ agent-session-manager
 
 | Taste | Funktion |
 |-------|----------|
-| `↑` / `↓` | Session auswählen |
+| `↑` / `↓` | Session auswählen (Liste) / Preview scrollen (zeilenweise) |
+| `←` / `→` | Fokus zwischen Liste und Preview wechseln |
 | `Enter` | Zu ausgewählter Session wechseln |
 | `Tab` | Zwischen Sessions/Trash wechseln |
 | `Ctrl+F` | Suche öffnen |
+| `s` | Sortierung wechseln (Project → Msgs → Date) |
+| `S` | Sortierrichtung umschalten (▲/▼) |
 | `d` | Session löschen (mit Bestätigung) |
 | `y` | Löschen bestätigen |
 | `n` / `Esc` | Löschen abbrechen |
 | `r` | Session aus Trash wiederherstellen |
+| `t` | Trash leeren (im Trash-Tab) |
 | `e` | Session als Markdown exportieren |
-| `Page Up` / `Page Down` | Message-Preview scrollen |
+| `0` | Alle Sessions mit 0 Nachrichten in Trash verschieben |
+| `PgUp` / `PgDn` | Page scrollen (je nach Fokus) |
+| `h` | Hilfe anzeigen (README) |
 | `q` / `Esc` | Beenden |
 
 ## Architektur
@@ -73,7 +81,7 @@ agent-session-manager
 Das Projekt verwendet eine saubere Modul-Struktur:
 
 - **`models.rs`**: Datenmodelle für Sessions und Messages
-- **`store.rs`**: Session-Verwaltung und Datei-I/O
+- **`store.rs`**: Session-Verwaltung und Datei-I/O (mit parallelem Laden via rayon)
 - **`commands.rs`**: Session-Operationen (delete, export, restore)
 - **`ui.rs`**: TUI-Rendering mit ratatui
 - **`app.rs`**: Anwendungslogik und State-Management
@@ -116,8 +124,15 @@ Exportierte Sessions landen in:
 Trash-Verzeichnis:
 
 ```
-~/.claude/trash/
+~/.claude/trash.json
 ```
+
+## Performance
+
+Das Tool verwendet **rayon** für paralleles Laden von Sessions:
+- Alle Session-Dateien werden gleichzeitig von mehreren Threads verarbeitet
+- Deutlich schneller bei großen Session-Mengen (100+)
+- Fortschrittsbalken zeigt Lade-Status an
 
 ## Beitragen
 
@@ -131,4 +146,5 @@ MIT License - siehe LICENSE-Datei für Details.
 
 - Gebaut mit [ratatui](https://github.com/ratatui/ratatui) für das TUI
 - [crossterm](https://github.com/crossterm-rs/crossterm) für Terminal-Handling
+- [rayon](https://github.com/rayon-rs/rayon) für parallele Datenverarbeitung
 - Entwickelt für [Claude Code](https://claude.com/claude-code)

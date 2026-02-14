@@ -112,6 +112,18 @@ fn handle_key_event(
     app: &mut App,
     key: event::KeyEvent,
 ) -> Option<io::Result<Option<(String, Option<String>)>>> {
+    if app.show_help {
+        match key.code {
+            KeyCode::Char('h') | KeyCode::Esc => app.toggle_help(),
+            KeyCode::Up => app.help_scroll_up(1),
+            KeyCode::Down => app.help_scroll_down(1),
+            KeyCode::PageUp => app.help_scroll_up(10),
+            KeyCode::PageDown => app.help_scroll_down(10),
+            _ => {}
+        }
+        return None;
+    }
+
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => {
             if app.is_confirmation_pending() {
@@ -248,6 +260,9 @@ fn handle_key_event(
                 crate::app::SortDirection::Descending => "descending",
             };
             app.set_status(format!("Sort direction: {}", dir_name));
+        }
+        KeyCode::Char('h') if !app.show_search => {
+            app.toggle_help();
         }
         _ if app.show_search => match key.code {
             KeyCode::Char(c) => app.add_search_char(c),

@@ -20,5 +20,5 @@ expression: terminal.backend()
 "│                            ││                                                                    │"
 "└────────────────────────────┘└────────────────────────────────────────────────────────────────────┘"
 "────────────────────────────────────────────────────────────────────────────────────────────────────"
-"[Enter] resume  [d]elete  [e]xport  [s] sort  [S] dir  [Ctrl+F] search  [q]uit                      "
+"[Enter] resume  [d]elete  [e]xport  [s] sort  [S] dir  [←/→] focus  [Ctrl+F] search  [h]elp  [q]uit "
 "                                                                                                    "
