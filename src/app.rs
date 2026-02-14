@@ -16,10 +16,10 @@ pub enum FocusPanel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfirmAction {
-    DeleteToTrash(String),      // Session ID to move to trash
-    DeletePermanently(String),  // Session ID to delete permanently
-    EmptyTrash,                 // Empty entire trash
-    TrashZeroMessages,          // Move all 0-message sessions to trash
+    DeleteToTrash(String),     // Session ID to move to trash
+    DeletePermanently(String), // Session ID to delete permanently
+    EmptyTrash,                // Empty entire trash
+    TrashZeroMessages,         // Move all 0-message sessions to trash
 }
 
 pub struct App {
@@ -112,7 +112,6 @@ impl App {
         }
     }
 
-
     pub fn focus_left(&mut self) {
         self.focus = FocusPanel::List;
     }
@@ -126,7 +125,8 @@ impl App {
             FocusPanel::List => {
                 let list = self.filtered_sessions();
                 if !list.is_empty() {
-                    self.selected_session_idx = (self.selected_session_idx + page_size).min(list.len() - 1);
+                    self.selected_session_idx =
+                        (self.selected_session_idx + page_size).min(list.len() - 1);
                     self.preview_scroll = 0;
                 }
             }
@@ -193,15 +193,17 @@ impl App {
             let id = session.id.clone();
             if let Some(pos) = self.sessions.iter().position(|s| s.id == id) {
                 let removed = self.sessions.remove(pos);
+
+                let store = SessionStore::new();
+                let _ = store.delete_session_file(&removed.project_name, &removed.id);
+
                 self.trash.push(removed);
 
                 // Save trash to disk
-                let store = SessionStore::new();
                 let _ = store.save_trash(&self.trash);
 
                 self.set_status(format!("Moved to trash: {}", id));
-                if self.selected_session_idx > 0
-                    && self.selected_session_idx >= self.sessions.len()
+                if self.selected_session_idx > 0 && self.selected_session_idx >= self.sessions.len()
                 {
                     self.selected_session_idx -= 1;
                 }
@@ -219,16 +221,15 @@ impl App {
             let id = session.id.clone();
             if let Some(pos) = self.trash.iter().position(|s| s.id == id) {
                 let removed = self.trash.remove(pos);
-                self.sessions.push(removed);
 
-                // Save trash to disk
                 let store = SessionStore::new();
+                let _ = store.restore_session_file(&removed);
+
+                self.sessions.push(removed);
                 let _ = store.save_trash(&self.trash);
 
                 self.set_status(format!("Restored: {}", id));
-                if self.selected_session_idx > 0
-                    && self.selected_session_idx >= self.trash.len()
-                {
+                if self.selected_session_idx > 0 && self.selected_session_idx >= self.trash.len() {
                     self.selected_session_idx -= 1;
                 }
             }
@@ -311,7 +312,11 @@ impl App {
             return;
         }
 
-        let count = self.sessions.iter().filter(|s| s.messages.is_empty()).count();
+        let count = self
+            .sessions
+            .iter()
+            .filter(|s| s.messages.is_empty())
+            .count();
         if count == 0 {
             self.set_status("No empty sessions found".to_string());
             return;
@@ -325,12 +330,17 @@ impl App {
     }
 
     pub fn trash_zero_messages(&mut self) {
-        let (empty, non_empty): (Vec<_>, Vec<_>) = self.sessions.drain(..).partition(|s| s.messages.is_empty());
+        let (empty, non_empty): (Vec<_>, Vec<_>) =
+            self.sessions.drain(..).partition(|s| s.messages.is_empty());
         let count = empty.len();
         self.sessions = non_empty;
-        self.trash.extend(empty);
 
         let store = SessionStore::new();
+        for session in &empty {
+            let _ = store.delete_session_file(&session.project_name, &session.id);
+        }
+
+        self.trash.extend(empty);
         let _ = store.save_trash(&self.trash);
 
         if self.selected_session_idx >= self.sessions.len() && !self.sessions.is_empty() {
@@ -396,17 +406,19 @@ impl App {
 
     fn empty_trash(&mut self) {
         let count = self.trash.len();
-        self.trash.clear();
 
-        // Save empty trash to disk
         let store = SessionStore::new();
+        for session in &self.trash {
+            let _ = store.delete_session_file(&session.project_name, &session.id);
+        }
+
+        self.trash.clear();
         let _ = store.save_trash(&self.trash);
 
         self.set_status(format!("Permanently deleted {} sessions", count));
         self.confirm_action = None;
         self.selected_session_idx = 0;
     }
-
 
     pub fn set_status(&mut self, message: String) {
         self.status_message = Some(message);
@@ -441,6 +453,7 @@ mod tests {
                 role: "user".to_string(),
                 content: format!("msg in {}", id),
             }],
+            original_content: None,
         }
     }
 
@@ -469,10 +482,7 @@ mod tests {
 
     #[test]
     fn test_switch_tab_resets_selection() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         app.selected_session_idx = 1;
         app.switch_tab();
         assert_eq!(app.current_tab, Tab::Trash);
@@ -519,10 +529,7 @@ mod tests {
 
     #[test]
     fn test_move_to_trash() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         app.selected_session_idx = 0;
         app.move_selected_to_trash();
         assert_eq!(app.sessions.len(), 1);
@@ -568,10 +575,7 @@ mod tests {
 
     #[test]
     fn test_select_next_resets_scroll() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         app.preview_scroll = 10;
         app.select_next();
         assert_eq!(app.preview_scroll, 0);
@@ -588,10 +592,7 @@ mod tests {
 
     #[test]
     fn test_move_to_trash_adjusts_index() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         app.selected_session_idx = 1;
         app.move_selected_to_trash();
         assert_eq!(app.selected_session_idx, 0);
@@ -601,7 +602,7 @@ mod tests {
     fn test_set_status_sets_both_message_and_time() {
         let mut app = App::with_sessions(vec![]);
         app.set_status("Test message".to_string());
-        
+
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
         assert_eq!(app.status_message.unwrap(), "Test message");
@@ -611,11 +612,11 @@ mod tests {
     fn test_clear_expired_status_removes_after_expiry() {
         let mut app = App::with_sessions(vec![]);
         app.set_status("Test message".to_string());
-        
+
         // Immediately clear - should not remove (less than 3 seconds)
         app.clear_expired_status();
         assert!(app.status_message.is_some());
-        
+
         // Manually set time to 3+ seconds ago
         use std::time::Instant;
         app.status_message_time = Some(Instant::now() - std::time::Duration::from_secs(3));
@@ -629,7 +630,7 @@ mod tests {
         let mut app = App::with_sessions(vec![make_session("test-id", "test-proj")]);
         // Simulate export success by manually calling set_status
         app.set_status("Exported to /path/file.md".to_string());
-        
+
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
         assert!(app.status_message.unwrap().contains("Exported to"));
@@ -639,7 +640,7 @@ mod tests {
     fn test_request_delete_confirmation_uses_set_status() {
         let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
         app.request_delete_confirmation();
-        
+
         // Status message should be set with time
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
@@ -652,7 +653,7 @@ mod tests {
         app.trash = vec![make_session("s1", "p1")];
         app.current_tab = Tab::Trash;
         app.request_empty_trash();
-        
+
         // Status message should be set with time
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
@@ -661,15 +662,12 @@ mod tests {
 
     #[test]
     fn test_trash_zero_messages_moves_empty_sessions() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         // Make s2 have 0 messages
         app.sessions[1].messages.clear();
-        
+
         app.trash_zero_messages();
-        
+
         assert_eq!(app.sessions.len(), 1);
         assert_eq!(app.sessions[0].id, "s1");
         assert_eq!(app.trash.len(), 1);
@@ -685,9 +683,9 @@ mod tests {
         ]);
         app.sessions[0].messages.clear();
         app.sessions[2].messages.clear();
-        
+
         app.trash_zero_messages();
-        
+
         assert_eq!(app.sessions.len(), 1);
         assert_eq!(app.sessions[0].id, "s2");
         assert_eq!(app.trash.len(), 2);
@@ -695,12 +693,10 @@ mod tests {
 
     #[test]
     fn test_trash_zero_messages_none_empty() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-        ]);
-        
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+
         app.trash_zero_messages();
-        
+
         assert_eq!(app.sessions.len(), 1);
         assert_eq!(app.trash.len(), 0);
     }
@@ -715,35 +711,30 @@ mod tests {
         app.sessions[0].messages.clear();
         app.sessions[1].messages.clear();
         app.selected_session_idx = 2;
-        
+
         app.trash_zero_messages();
-        
+
         // Only s3 remains, selection should be 0
         assert_eq!(app.selected_session_idx, 0);
     }
 
     #[test]
     fn test_request_trash_zero_messages_sets_confirmation() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-            make_session("s2", "p2"),
-        ]);
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
         app.sessions[1].messages.clear();
-        
+
         app.request_trash_zero_messages();
-        
+
         assert_eq!(app.confirm_action, Some(ConfirmAction::TrashZeroMessages));
         assert!(app.status_message.unwrap().contains("1"));
     }
 
     #[test]
     fn test_request_trash_zero_messages_none_found() {
-        let mut app = App::with_sessions(vec![
-            make_session("s1", "p1"),
-        ]);
-        
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+
         app.request_trash_zero_messages();
-        
+
         assert_eq!(app.confirm_action, None);
         assert!(app.status_message.unwrap().contains("No empty sessions"));
     }
@@ -834,9 +825,9 @@ mod tests {
     fn test_switch_to_selected_session_sets_resume_id() {
         let session = make_session("test-id", "test-project");
         let mut app = App::with_sessions(vec![session]);
-        
+
         app.switch_to_selected_session();
-        
+
         assert_eq!(app.resume_session_id, Some("test-id".to_string()));
     }
 
@@ -844,9 +835,9 @@ mod tests {
     fn test_switch_to_selected_session_sets_resume_path() {
         let session = make_session("test-id", "test-project");
         let mut app = App::with_sessions(vec![session.clone()]);
-        
+
         app.switch_to_selected_session();
-        
+
         assert_eq!(app.resume_session_path, Some(session.project_path));
     }
 
@@ -860,9 +851,9 @@ mod tests {
     fn test_get_resume_command_builds_correct_command() {
         let session = make_session("abc123", "project");
         let mut app = App::with_sessions(vec![session]);
-        
+
         app.switch_to_selected_session();
-        
+
         assert_eq!(
             app.get_resume_command(),
             Some("claude --resume abc123".to_string())
@@ -873,9 +864,9 @@ mod tests {
     fn test_get_resume_session_path() {
         let session = make_session("test-id", "test-project");
         let mut app = App::with_sessions(vec![session.clone()]);
-        
+
         app.switch_to_selected_session();
-        
+
         assert_eq!(app.get_resume_session_path(), Some(session.project_path));
     }
 
@@ -883,11 +874,11 @@ mod tests {
     fn test_resume_command_persists() {
         let session = make_session("persist-test", "p");
         let mut app = App::with_sessions(vec![session]);
-        
+
         app.switch_to_selected_session();
         let cmd1 = app.get_resume_command();
         let cmd2 = app.get_resume_command();
-        
+
         assert_eq!(cmd1, cmd2);
         assert_eq!(cmd1, Some("claude --resume persist-test".to_string()));
     }
