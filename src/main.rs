@@ -145,7 +145,7 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
                         ConfirmAction::DeletePermanently(_) => {
                             app.confirm_and_execute();
                         }
-                        ConfirmAction::EmptyTrash => {
+                        ConfirmAction::EmptyTrash | ConfirmAction::TrashZeroMessages => {
                             app.confirm_and_execute();
                         }
                     }
@@ -173,7 +173,7 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
                             }
                         }
                     }
-                    ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash => {
+                    ConfirmAction::DeletePermanently(_) | ConfirmAction::EmptyTrash | ConfirmAction::TrashZeroMessages => {
                         app.confirm_and_execute();
                     }
                 }
@@ -184,6 +184,13 @@ fn handle_key_event(app: &mut App, key: event::KeyEvent) -> Option<io::Result<Op
         }
         KeyCode::Char('r') if !app.show_search => {
             app.restore_selected_from_trash();
+        }
+        KeyCode::Char('0') if !app.show_search => {
+            if app.is_confirmation_pending() {
+                app.confirm_and_execute();
+            } else {
+                app.request_trash_zero_messages();
+            }
         }
         KeyCode::Char('E') if !app.show_search => {
             if app.is_confirmation_pending() {

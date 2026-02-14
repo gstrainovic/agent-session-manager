@@ -273,6 +273,8 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw("xport  "),
                     Span::styled("[PgUp/PgDn]", Style::default().fg(Color::Cyan)),
                     Span::raw(" scroll  "),
+                    Span::styled("[0]", Style::default().fg(Color::Red)),
+                    Span::raw(" trash 0msg  "),
                     Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
                     Span::raw(" search  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),

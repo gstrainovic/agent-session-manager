@@ -20,5 +20,5 @@ expression: terminal.backend()
 "│                            ││                                                                    │"
 "└────────────────────────────┘└────────────────────────────────────────────────────────────────────┘"
 "────────────────────────────────────────────────────────────────────────────────────────────────────"
-"[Enter] resume  [d]elete  [e]xport  [PgUp/PgDn] scroll  [Ctrl+F] search  [q]uit                     "
+"[Enter] resume  [d]elete  [e]xport  [PgUp/PgDn] scroll  [0] trash 0msg  [Ctrl+F] search  [q]uit     "
 "                                                                                                    "

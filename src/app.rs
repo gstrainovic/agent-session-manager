@@ -13,6 +13,7 @@ pub enum ConfirmAction {
     DeleteToTrash(String),      // Session ID to move to trash
     DeletePermanently(String),  // Session ID to delete permanently
     EmptyTrash,                 // Empty entire trash
+    TrashZeroMessages,          // Move all 0-message sessions to trash
 }
 
 pub struct App {
@@ -272,6 +273,43 @@ impl App {
         ));
     }
 
+    pub fn request_trash_zero_messages(&mut self) {
+        if self.current_tab != Tab::Sessions {
+            return;
+        }
+
+        let count = self.sessions.iter().filter(|s| s.messages.is_empty()).count();
+        if count == 0 {
+            self.set_status("No empty sessions found".to_string());
+            return;
+        }
+
+        self.confirm_action = Some(ConfirmAction::TrashZeroMessages);
+        self.set_status(format!(
+            "Move {} session(s) with 0 messages to trash? Press 'y' to confirm, 'n' or Esc to cancel",
+            count
+        ));
+    }
+
+    pub fn trash_zero_messages(&mut self) {
+        let (empty, non_empty): (Vec<_>, Vec<_>) = self.sessions.drain(..).partition(|s| s.messages.is_empty());
+        let count = empty.len();
+        self.sessions = non_empty;
+        self.trash.extend(empty);
+
+        let store = SessionStore::new();
+        let _ = store.save_trash(&self.trash);
+
+        if self.selected_session_idx >= self.sessions.len() && !self.sessions.is_empty() {
+            self.selected_session_idx = self.sessions.len() - 1;
+        } else if self.sessions.is_empty() {
+            self.selected_session_idx = 0;
+        }
+
+        self.confirm_action = None;
+        self.set_status(format!("Moved {} empty session(s) to trash", count));
+    }
+
     pub fn cancel_confirmation(&mut self) {
         self.confirm_action = None;
         self.set_status("Action cancelled".to_string());
@@ -292,6 +330,9 @@ impl App {
                 }
                 ConfirmAction::EmptyTrash => {
                     self.empty_trash();
+                }
+                ConfirmAction::TrashZeroMessages => {
+                    self.trash_zero_messages();
                 }
             }
         }
@@ -582,6 +623,95 @@ mod tests {
         assert!(app.status_message.is_some());
         assert!(app.status_message_time.is_some());
         assert!(app.status_message.unwrap().contains("PERMANENTLY delete"));
+    }
+
+    #[test]
+    fn test_trash_zero_messages_moves_empty_sessions() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        // Make s2 have 0 messages
+        app.sessions[1].messages.clear();
+        
+        app.trash_zero_messages();
+        
+        assert_eq!(app.sessions.len(), 1);
+        assert_eq!(app.sessions[0].id, "s1");
+        assert_eq!(app.trash.len(), 1);
+        assert_eq!(app.trash[0].id, "s2");
+    }
+
+    #[test]
+    fn test_trash_zero_messages_moves_all_empty() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+        ]);
+        app.sessions[0].messages.clear();
+        app.sessions[2].messages.clear();
+        
+        app.trash_zero_messages();
+        
+        assert_eq!(app.sessions.len(), 1);
+        assert_eq!(app.sessions[0].id, "s2");
+        assert_eq!(app.trash.len(), 2);
+    }
+
+    #[test]
+    fn test_trash_zero_messages_none_empty() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+        ]);
+        
+        app.trash_zero_messages();
+        
+        assert_eq!(app.sessions.len(), 1);
+        assert_eq!(app.trash.len(), 0);
+    }
+
+    #[test]
+    fn test_trash_zero_messages_adjusts_selection() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+        ]);
+        app.sessions[0].messages.clear();
+        app.sessions[1].messages.clear();
+        app.selected_session_idx = 2;
+        
+        app.trash_zero_messages();
+        
+        // Only s3 remains, selection should be 0
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_request_trash_zero_messages_sets_confirmation() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.sessions[1].messages.clear();
+        
+        app.request_trash_zero_messages();
+        
+        assert_eq!(app.confirm_action, Some(ConfirmAction::TrashZeroMessages));
+        assert!(app.status_message.unwrap().contains("1"));
+    }
+
+    #[test]
+    fn test_request_trash_zero_messages_none_found() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+        ]);
+        
+        app.request_trash_zero_messages();
+        
+        assert_eq!(app.confirm_action, None);
+        assert!(app.status_message.unwrap().contains("No empty sessions"));
     }
 
     #[test]
