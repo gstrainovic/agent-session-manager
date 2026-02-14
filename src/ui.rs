@@ -453,44 +453,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         .iter()
         .skip(app.help_scroll as usize)
         .take(height as usize - 2)
-        .map(|line| {
-            let styled_line = if line.starts_with("# ") {
-                Line::from(vec![Span::styled(
-                    line.clone(),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                )])
-            } else if line.starts_with("## ") {
-                Line::from(vec![Span::styled(
-                    line.clone(),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )])
-            } else if line.starts_with("### ") {
-                Line::from(vec![Span::styled(
-                    line.clone(),
-                    Style::default().fg(Color::Green),
-                )])
-            } else if line.starts_with("| ") || line.starts_with("|-") {
-                Line::from(vec![Span::styled(
-                    line.clone(),
-                    Style::default().fg(Color::White),
-                )])
-            } else if line.starts_with("```") {
-                Line::from(vec![Span::styled(
-                    line.clone(),
-                    Style::default().fg(Color::DarkGray),
-                )])
-            } else {
-                Line::from(vec![Span::styled(
-                    sanitize_for_display(line),
-                    Style::default().fg(Color::White),
-                )])
-            };
-            styled_line
-        })
+        .map(|line| parse_markdown_line(line))
         .collect();
 
     let help_widget = Paragraph::new(visible_lines)
@@ -503,6 +466,161 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         .wrap(Wrap { trim: false });
 
     f.render_widget(help_widget, popup_area);
+}
+
+fn parse_markdown_line(line: &str) -> Line {
+    let line = sanitize_for_display(line);
+
+    if line.starts_with("# ") {
+        Line::from(vec![Span::styled(
+            line[2..].to_string(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )])
+    } else if line.starts_with("## ") {
+        Line::from(vec![Span::styled(
+            line[3..].to_string(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )])
+    } else if line.starts_with("### ") {
+        Line::from(vec![Span::styled(
+            line[4..].to_string(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )])
+    } else if line.starts_with("```") {
+        Line::from(vec![Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::DarkGray),
+        )])
+    } else if line.starts_with("| ") || line.starts_with("|-") {
+        Line::from(vec![Span::styled(
+            line.to_string(),
+            Style::default().fg(Color::White),
+        )])
+    } else if line.starts_with("- ") || line.starts_with("* ") {
+        let content = line[2..].to_string();
+        let spans = parse_inline_formatting(content, Style::default().fg(Color::White));
+        let mut result = vec![Span::styled(
+            "• ".to_string(),
+            Style::default().fg(Color::Cyan),
+        )];
+        result.extend(spans);
+        Line::from(result)
+    } else if line.starts_with("  ")
+        && (line.trim().starts_with("- ") || line.trim().starts_with("* "))
+    {
+        let content = line.trim()[2..].to_string();
+        let spans = parse_inline_formatting(content, Style::default().fg(Color::White));
+        let mut result = vec![Span::styled(
+            "  ◦ ".to_string(),
+            Style::default().fg(Color::DarkGray),
+        )];
+        result.extend(spans);
+        Line::from(result)
+    } else {
+        let spans = parse_inline_formatting(line.clone(), Style::default().fg(Color::White));
+        Line::from(spans)
+    }
+}
+
+fn parse_inline_formatting(text: String, base_style: Style) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut chars = text.chars().peekable();
+    let mut current_text = String::new();
+
+    while let Some(ch) = chars.next() {
+        if ch == '`' {
+            if !current_text.is_empty() {
+                spans.push(Span::styled(current_text.clone(), base_style));
+                current_text.clear();
+            }
+            let mut code_content = String::new();
+            while let Some(next_ch) = chars.next() {
+                if next_ch == '`' {
+                    break;
+                }
+                code_content.push(next_ch);
+            }
+            spans.push(Span::styled(
+                code_content,
+                Style::default().fg(Color::Yellow).bg(Color::DarkGray),
+            ));
+        } else if ch == '*' || ch == '_' {
+            if chars.peek() == Some(&ch) {
+                chars.next();
+                if !current_text.is_empty() {
+                    spans.push(Span::styled(current_text.clone(), base_style));
+                    current_text.clear();
+                }
+                let mut bold_content = String::new();
+                let mut found_end = false;
+                while let Some(next_ch) = chars.next() {
+                    if next_ch == ch && chars.peek() == Some(&ch) {
+                        chars.next();
+                        found_end = true;
+                        break;
+                    }
+                    bold_content.push(next_ch);
+                }
+                spans.push(Span::styled(
+                    bold_content.clone(),
+                    base_style.add_modifier(Modifier::BOLD),
+                ));
+                if !found_end {
+                    current_text.push(ch);
+                    current_text.push(ch);
+                    current_text.push_str(&bold_content);
+                }
+            } else {
+                current_text.push(ch);
+            }
+        } else if ch == '[' {
+            let mut link_text = String::new();
+            let mut found_end = false;
+            while let Some(next_ch) = chars.next() {
+                if next_ch == ']' {
+                    found_end = true;
+                    break;
+                }
+                link_text.push(next_ch);
+            }
+            if found_end && chars.peek() == Some(&'(') {
+                chars.next();
+                let mut url = String::new();
+                while let Some(next_ch) = chars.next() {
+                    if next_ch == ')' {
+                        break;
+                    }
+                    url.push(next_ch);
+                }
+                spans.push(Span::styled(
+                    link_text,
+                    Style::default()
+                        .fg(Color::Blue)
+                        .add_modifier(Modifier::UNDERLINED),
+                ));
+            } else {
+                current_text.push(ch);
+                current_text.push_str(&link_text);
+                if found_end {
+                    current_text.push(']');
+                }
+            }
+        } else {
+            current_text.push(ch);
+        }
+    }
+
+    if !current_text.is_empty() {
+        spans.push(Span::styled(current_text, base_style));
+    }
+
+    spans
 }
 
 #[cfg(test)]
