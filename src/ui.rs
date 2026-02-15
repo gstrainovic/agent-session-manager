@@ -444,8 +444,8 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
 
     f.render_widget(Clear, popup_area);
 
-    let help_text = std::fs::read_to_string("README.md")
-        .or_else(|_| std::fs::read_to_string("/home/g/workspace/agent-session-manager/README.md"))
+    let help_text = std::fs::read_to_string("help.md")
+        .or_else(|_| std::fs::read_to_string("/home/g/workspace/agent-session-manager/help.md"))
         .unwrap_or_else(|_| "README.md not found".to_string());
     let lines: Vec<String> = help_text.lines().map(|s| s.to_string()).collect();
 
@@ -459,7 +459,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     let help_widget = Paragraph::new(visible_lines)
         .block(
             Block::default()
-                .title(" Help (h to close, ↑/↓ to scroll) ")
+                .title(" Help (Esc/h to close, ↑/↓ to scroll) ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan)),
         )
@@ -468,7 +468,7 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
     f.render_widget(help_widget, popup_area);
 }
 
-fn parse_markdown_line(line: &str) -> Line {
+fn parse_markdown_line(line: &str) -> Line<'_> {
     let line = sanitize_for_display(line);
 
     if line.starts_with("# ") {

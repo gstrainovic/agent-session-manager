@@ -1,36 +1,36 @@
 # Agent Session Manager
 
-Ein Terminal-basierter Session-Manager für Claude Code Sessions.
+A terminal-based session manager for Claude Code sessions.
 
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 ## Features
 
-- **Session-Übersicht**: Zeigt alle Claude Code Sessions mit Projekt-Informationen, Datum und Nachrichtenanzahl
-- **Schnelle Navigation**: Wechsle einfach zwischen Sessions mit Pfeiltasten und Enter
-- **Sortierbare Spalten**: Sortiere nach Projektname, Nachrichtenanzahl oder Datum
-- **Suche**: Finde Sessions schnell mit `Ctrl+F`
-- **Message-Preview**: Zeigt Konversationsinhalt mit scrollbarer Vorschau
-- **Session-Export**: Exportiere Sessions als Markdown-Datei
-- **Trash-System**: Lösche und restore Sessions sicher
-- **Paralleles Laden**: Schnelles Laden großer Session-Mengen mit Multi-Threading
-- **TUI-Interface**: Intuitive Terminal-Oberfläche mit [ratatui](https://github.com/ratatui/ratatui)
+- **Session Overview**: Display all Claude Code sessions with project info, date, and message count
+- **Quick Navigation**: Switch between sessions easily with arrow keys and Enter
+- **Sortable Columns**: Sort by project name, message count, or date
+- **Search**: Find sessions quickly with `Ctrl+F`
+- **Message Preview**: Show conversation content with scrollable preview
+- **Session Export**: Export sessions as Markdown files
+- **Trash System**: Safely delete and restore sessions
+- **Parallel Loading**: Fast loading of large session sets with multi-threading
+- **TUI Interface**: Intuitive terminal interface with [ratatui](https://github.com/ratatui/ratatui)
 
 ## Screenshots
 
-Das Tool bietet zwei Tabs:
-- **Sessions Tab**: Übersicht aller aktiven Sessions
-- **Trash Tab**: Gelöschte Sessions zum Wiederherstellen
+The tool provides two tabs:
+- **Sessions Tab**: Overview of all active sessions
+- **Trash Tab**: Deleted sessions for recovery
 
 ## Installation
 
-### Voraussetzungen
+### Requirements
 
-- Rust 1.70+ und Cargo
+- Rust 1.70+ and Cargo
 - Claude Code (CLI)
 
-### Von Source bauen
+### Build from Source
 
 ```bash
 git clone https://github.com/DEIN_USERNAME/agent-session-manager.git
@@ -38,9 +38,9 @@ cd agent-session-manager
 cargo build --release
 ```
 
-Die Binary findest du dann in `target/release/agent-session-manager`.
+The binary will be in `target/release/agent-session-manager`.
 
-Optional in PATH installieren:
+Optionally install to PATH:
 
 ```bash
 cargo install --path .
@@ -48,7 +48,7 @@ cargo install --path .
 
 ## Usage
 
-Starte einfach:
+Simply run:
 
 ```bash
 agent-session-manager
@@ -56,40 +56,40 @@ agent-session-manager
 
 ### Keyboard Shortcuts
 
-| Taste | Funktion |
-|-------|----------|
-| `↑` / `↓` | Session auswählen (Liste) / Preview scrollen (zeilenweise) |
-| `←` / `→` | Fokus zwischen Liste und Preview wechseln |
-| `Enter` | Zu ausgewählter Session wechseln |
-| `Tab` | Zwischen Sessions/Trash wechseln |
-| `Ctrl+F` | Suche öffnen |
-| `s` | Sortierung wechseln (Project → Msgs → Date) |
-| `S` | Sortierrichtung umschalten (▲/▼) |
-| `d` | Session löschen (mit Bestätigung) |
-| `y` | Löschen bestätigen |
-| `n` / `Esc` | Löschen abbrechen |
-| `r` | Session aus Trash wiederherstellen |
-| `t` | Trash leeren (im Trash-Tab) |
-| `e` | Session als Markdown exportieren |
-| `0` | Alle Sessions mit 0 Nachrichten in Trash verschieben |
-| `PgUp` / `PgDn` | Page scrollen (je nach Fokus) |
-| `h` | Hilfe anzeigen (README) |
-| `q` / `Esc` | Beenden |
+| Key | Function |
+|-----|----------|
+| `↑` / `↓` | Select session (list) / scroll preview (line by line) |
+| `←` | Switch / `→` focus between list and preview |
+| `Enter` | Switch to selected session |
+| `Tab` | Switch between Sessions/Trash |
+| `Ctrl+F` | Open search |
+| `s` | Toggle sort (Project → Msgs → Date) |
+| `S` | Toggle sort direction (▲/▼) |
+| `d` | Delete session (with confirmation) |
+| `y` | Confirm delete |
+| `n` / `Esc` | Cancel delete |
+| `r` | Restore session from Trash |
+| `t` | Empty trash (in Trash tab) |
+| `e` | Export session as Markdown |
+| `0` | Move all sessions with 0 messages to trash |
+| `PgUp` / `PgDn` | Page scroll (depending on focus) |
+| `h` | Show help (README) |
+| `q` / `Esc` | Quit |
 
-## Architektur
+## Architecture
 
-Das Projekt verwendet eine saubere Modul-Struktur:
+The project uses a clean module structure:
 
-- **`models.rs`**: Datenmodelle für Sessions und Messages
-- **`store.rs`**: Session-Verwaltung und Datei-I/O (mit parallelem Laden via rayon)
-- **`commands.rs`**: Session-Operationen (delete, export, restore)
-- **`ui.rs`**: TUI-Rendering mit ratatui
-- **`app.rs`**: Anwendungslogik und State-Management
-- **`main.rs`**: Event-Loop und Terminal-Setup
+- **`models.rs`**: Data models for sessions and messages
+- **`store.rs`**: Session management and file I/O (with parallel loading via rayon)
+- **`commands.rs`**: Session operations (delete, export, restore)
+- **`ui.rs`**: TUI rendering with ratatui
+- **`app.rs`**: Application logic and state management
+- **`main.rs`**: Event loop and terminal setup
 
-## Entwicklung
+## Development
 
-### Tests ausführen
+### Run Tests
 
 ```bash
 cargo test
@@ -107,21 +107,21 @@ cargo run
 cargo build --release
 ```
 
-## Session-Daten
+## Session Data
 
-Sessions werden aus dem Claude Code Session-Verzeichnis gelesen:
+Sessions are read from the Claude Code session directory:
 
 ```
 ~/.claude/projects/<project-hash>/sessions/
 ```
 
-Exportierte Sessions landen in:
+Exported sessions go to:
 
 ```
 ~/claude-exports/
 ```
 
-Trash-Verzeichnis:
+Trash directory:
 
 ```
 ~/.claude/trash.json
@@ -129,22 +129,23 @@ Trash-Verzeichnis:
 
 ## Performance
 
-Das Tool verwendet **rayon** für paralleles Laden von Sessions:
-- Alle Session-Dateien werden gleichzeitig von mehreren Threads verarbeitet
-- Deutlich schneller bei großen Session-Mengen (100+)
-- Fortschrittsbalken zeigt Lade-Status an
+The tool uses **rayon** for parallel loading of sessions:
+- All session files are processed simultaneously by multiple threads
+- Significantly faster with large session sets (100+)
+- Progress bar shows loading status
 
-## Beitragen
+## Contributing
 
-Contributions sind willkommen! Öffne gerne ein Issue oder Pull Request.
+Contributions welcome! Please open an issue or pull request.
 
 ## License
 
-MIT License - siehe LICENSE-Datei für Details.
+MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- Gebaut mit [ratatui](https://github.com/ratatui/ratatui) für das TUI
-- [crossterm](https://github.com/crossterm-rs/crossterm) für Terminal-Handling
-- [rayon](https://github.com/rayon-rs/rayon) für parallele Datenverarbeitung
-- Entwickelt für [Claude Code](https://claude.com/claude-code)
+- Built with [ratatui](https://github.com/ratatui/ratatui) for the TUI
+- [crossterm](https://github.com/crossterm-rs/crossterm) for terminal handling
+- [rayon](https://github.com/rayon-rs/rayon) for parallel data processing
+- Developed for [Claude Code](https://claude.com/claude-code)
+
