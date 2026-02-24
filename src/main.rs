@@ -13,7 +13,6 @@ use crossterm::{
 use ratatui::prelude::*;
 use std::error::Error;
 use std::io;
-use std::os::unix::process::CommandExt;
 
 fn main() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
@@ -43,24 +42,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match res {
         Ok(Some((command, path))) => {
-            // Build shell command: clear && cd <project> && claude --resume <id>
             let session_id = command.strip_prefix("claude --resume ").unwrap_or_default();
-
-            let shell_cmd = match path {
-                Some(project_path) => format!(
-                    "clear && cd {} && claude --resume {}",
-                    shell_escape(&project_path),
-                    session_id
-                ),
-                None => format!("clear && claude --resume {}", session_id),
-            };
-
-            // exec() replaces the current process on success, only returns on error
-            let exec_error = std::process::Command::new("sh")
-                .args(["-c", &shell_cmd])
-                .exec();
-            eprintln!("Failed to execute 'claude --resume': {}", exec_error);
-            std::process::exit(1);
+            launch_claude_resume(session_id, path);
         }
         Err(err) => {
             eprintln!("{:?}", err);
@@ -71,9 +54,41 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Escapes a string for safe use in shell commands
+/// Launches `claude --resume <id>` after the TUI has exited.
+/// Uses spawn+wait on all platforms (terminal is already restored at this point).
+fn launch_claude_resume(session_id: &str, path: Option<String>) {
+    #[cfg(target_family = "unix")]
+    let (prog, args) = {
+        let cmd = match path {
+            Some(ref p) => format!("clear && cd {} && claude --resume {}", shell_escape(p), session_id),
+            None => format!("clear && claude --resume {}", session_id),
+        };
+        ("sh", vec!["-c".to_string(), cmd])
+    };
+
+    #[cfg(target_os = "windows")]
+    let (prog, args) = {
+        let cmd = match path {
+            Some(ref p) => format!("cls && cd /d {} && claude --resume {}", cmd_quote(p), session_id),
+            None => format!("cls && claude --resume {}", session_id),
+        };
+        ("cmd", vec!["/c".to_string(), cmd])
+    };
+
+    match std::process::Command::new(prog).args(&args).spawn() {
+        Ok(mut child) => { let _ = child.wait(); }
+        Err(e) => { eprintln!("Failed to launch claude: {}", e); std::process::exit(1); }
+    }
+}
+
+#[cfg(target_family = "unix")]
 fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(target_os = "windows")]
+fn cmd_quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
 }
 
 fn run_app<B: Backend>(
