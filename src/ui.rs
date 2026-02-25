@@ -904,4 +904,46 @@ mod tests {
         terminal.draw(|f| draw(f, &app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
+
+    #[test]
+    fn test_snapshot_settings_modal() {
+        let mut app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "my-project",
+            vec![make_msg("user", "Hello")],
+        )]);
+        app.open_settings();
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
+
+    #[test]
+    fn test_snapshot_help_modal() {
+        let mut app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "my-project",
+            vec![make_msg("user", "Hello")],
+        )]);
+        app.toggle_help();
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
+
+    #[test]
+    fn test_snapshot_delete_confirm() {
+        let mut app = App::with_sessions(vec![make_session(
+            "abc12345-6789",
+            "my-project",
+            vec![make_msg("user", "Hello")],
+        )]);
+        app.request_delete_confirmation();
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
 }

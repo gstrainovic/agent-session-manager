@@ -1,0 +1,25 @@
+---
+source: src/ui.rs
+assertion_line: 933
+expression: terminal.backend()
+---
+"┌ Agent Session Manager ───────────────────────────────────────────────────────────────────────────┐"
+"│  Sessions (1)    Trash (0)    [Tab] to switch                                                    │"
+"└─────────┌ Help (Esc/h to close, ↑/↓ to scroll) ────────────────────────────────────────┐─────────┘"
+"┌ Sessions│Agent Session Manager - Help                                                  │─────────┐"
+"│Project  │                                                                              │         │"
+"│my-projec│A terminal-based session manager for Claude Code sessions.                    │         │"
+"│         │                                                                              │         │"
+"│         │Keyboard Shortcuts                                                            │         │"
+"│         │                                                                              │         │"
+"│         │| Key | Function |                                                            │         │"
+"│         │|-----|----------|                                                            │         │"
+"│         │| `↑` / `↓` | Select session (list) / scroll preview (line by line) |         │         │"
+"│         │| `←` / `→` | Switch focus between list and preview |                         │         │"
+"│         │| `Enter` | Switch to selected session |                                      │         │"
+"│         │| `Tab` | Switch between Sessions/Trash |                                     │         │"
+"│         │| `Ctrl+F` | Open search |                                                    │         │"
+"└─────────│| `s` | Toggle sort (Project → Msgs → Date) |                                 │─────────┘"
+"──────────└──────────────────────────────────────────────────────────────────────────────┘──────────"
+"[Enter] resume  [d]elete  [e]xport  [s] sort  [S] dir  [←/→] focus  [Ctrl+F] search  [g]settings  [h"
+"                                                                                                    "
