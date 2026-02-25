@@ -1,8 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "test": "tui-test",
-    "test:trace": "tui-test --trace"
+    "test": "tui-test --updateSnapshot"
   },
   "devDependencies": {
     "@microsoft/tui-test": "0.0.1-rc.5"

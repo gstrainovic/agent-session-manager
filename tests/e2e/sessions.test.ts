@@ -61,7 +61,6 @@ test.describe("search filters list", () => {
   });
 
   test("search filters list", async ({ terminal }) => {
-    // Wait for UI to load (project names may be truncated in the list column)
     await expect(
       terminal.getByText("Sessions", { strict: false })
     ).toBeVisible();
@@ -72,7 +71,6 @@ test.describe("search filters list", () => {
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
     terminal.write("alpha");
-    // After filtering, only alpha-project remains → preview shows full name
     await expect(
       terminal.getByText("alpha-project", { strict: false })
     ).toBeVisible();
@@ -101,7 +99,7 @@ test.describe("settings change export path", () => {
       terminal.getByText("Sessions", { strict: false })
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
-    terminal.write("g"); // Settings öffnen
+    terminal.write("g");
     await expect(
       terminal.getByText("Export Path", { strict: false })
     ).toBeVisible();
@@ -109,7 +107,7 @@ test.describe("settings change export path", () => {
     terminal.keyBackspace(30);
     const newPath = env3.exportDir.replace(/\\/g, "/");
     terminal.write(newPath);
-    terminal.submit(); // Enter
+    terminal.submit();
     await expect(
       terminal.getByText("Settings saved", { strict: false })
     ).toBeVisible();
@@ -182,13 +180,12 @@ test.describe("delete moves to trash tab", () => {
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
     terminal.write("d");
-    // Confirmation message: "Move '...' to trash? Press 'd' or 'y' to confirm"
     await expect(
       terminal.getByText("trash", { strict: false })
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
     terminal.write("y");
-    terminal.write("\t"); // Tab to Trash
+    terminal.write("\t");
     await expect(
       terminal.getByText("Trash", { strict: false })
     ).toBeVisible();
@@ -224,13 +221,12 @@ test.describe("restore from trash", () => {
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
     terminal.write("d");
-    // Confirmation message: "Move '...' to trash? Press 'd' or 'y' to confirm"
     await expect(
       terminal.getByText("trash", { strict: false })
     ).toBeVisible();
     await expect(terminal).toMatchSnapshot();
     terminal.write("y");
-    terminal.write("\t"); // Tab to Trash
+    terminal.write("\t");
     await expect(
       terminal.getByText("Trash", { strict: false })
     ).toBeVisible();

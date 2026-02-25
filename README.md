@@ -85,17 +85,12 @@ The project uses a clean module structure:
 - **`models.rs`**: Data models for sessions and messages
 - **`store.rs`**: Session management and file I/O (with parallel loading via rayon)
 - **`commands.rs`**: Session operations (delete, export, restore)
+- **`config.rs`**: Persistent configuration (export path, config file management)
 - **`ui.rs`**: TUI rendering with ratatui
 - **`app.rs`**: Application logic and state management
 - **`main.rs`**: Event loop and terminal setup
 
 ## Development
-
-### Run Tests
-
-```bash
-cargo test
-```
 
 ### Development Build
 
@@ -108,6 +103,33 @@ cargo run
 ```bash
 cargo build --release
 ```
+
+### Testing
+
+Das Projekt verwendet eine 3-Layer Test-Architektur:
+
+**Layer 1 — Unit-Tests** (92 Tests in `src/`):
+```bash
+cargo test
+```
+
+**Layer 2 — Integration Tests** (9 Tests in `tests/integration.rs`):
+```bash
+cargo test --test integration
+```
+
+**Layer 3 — E2E TUI-Tests** (6 Tests in `tests/e2e/`):
+
+Starten die echte Binary und interagieren per Tastatureingabe mit
+[@microsoft/tui-test](https://github.com/microsoft/tui-test) (xterm.js-basiert, plattformübergreifend).
+
+```bash
+cargo build                     # Binary muss vorher gebaut sein
+cd tests/e2e && npm test        # E2E-Tests ausführen
+```
+
+Tests erzeugen bei jedem Lauf **Snapshots** in `tests/e2e/__snapshots__/sessions.test.ts.snap` —
+ASCII-Abbilder des Terminal-Zustands an jedem Prüfpunkt zur visuellen Inspektion.
 
 ## Session Data
 

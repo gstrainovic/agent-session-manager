@@ -94,14 +94,16 @@ cargo test --test integration
 und interagieren per Tastatureingabe. Nutzt xterm.js als Terminal-Emulator statt
 ConPTY-Pipes — funktioniert plattformübergreifend (Windows/Linux/macOS).
 
-**Plattform:** Windows, Linux, macOS.
+**Voraussetzung:** `cargo build` muss vorher gelaufen sein (Binary in `target/debug/`).
 
 ```bash
-cd tests/e2e && npm test            # E2E-Tests ausführen
-cd tests/e2e && npm run test:trace  # mit Trace-Aufzeichnung
+cd tests/e2e && npm test    # E2E-Tests ausführen
 ```
 
-**Voraussetzung:** `cargo build` muss vorher gelaufen sein (Binary in `target/debug/`).
+**Snapshots:** Tests enthalten `toMatchSnapshot()` Aufrufe, die bei jedem Lauf den Terminal-Zustand
+als Text in `tests/e2e/__snapshots__/sessions.test.ts.snap` schreiben (immer `--updateSnapshot`).
+Snapshots dienen zur **visuellen Inspektion** durch den Entwickler, nicht als Regressionstest
+(Timestamps und Temp-Pfade ändern sich bei jedem Lauf). Die Snapshot-Datei ist in `.gitignore`.
 
 ### Test-Ausführung
 
