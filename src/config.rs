@@ -51,6 +51,9 @@ impl AppConfig {
     }
 
     fn config_path() -> PathBuf {
+        if let Ok(dir) = std::env::var("AGENT_CONFIG_DIR") {
+            return PathBuf::from(dir).join("config.json");
+        }
         dirs::config_dir()
             .expect("config dir")
             .join("agent-session-manager/config.json")
@@ -114,5 +117,14 @@ mod tests {
         };
         let resolved = config.resolved_export_path();
         assert_eq!(resolved, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn test_config_path_uses_env_var() {
+        let tmp = TempDir::new().unwrap();
+        std::env::set_var("AGENT_CONFIG_DIR", tmp.path());
+        let path = AppConfig::config_path();
+        assert_eq!(path, tmp.path().join("config.json"));
+        std::env::remove_var("AGENT_CONFIG_DIR");
     }
 }
