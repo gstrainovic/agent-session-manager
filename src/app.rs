@@ -284,12 +284,9 @@ impl App {
                 let removed = self.sessions.remove(pos);
 
                 let store = SessionStore::new();
-                let _ = store.delete_session_file(&removed.project_name, &removed.id);
+                let _ = store.move_to_trash(&removed.project_name, &removed.id);
 
                 self.trash.push(removed);
-
-                // Save trash to disk
-                let _ = store.save_trash(&self.trash);
 
                 self.set_status(format!("Moved to trash: {}", id));
                 if self.selected_session_idx > 0 && self.selected_session_idx >= self.sessions.len()
@@ -315,7 +312,6 @@ impl App {
                 let _ = store.restore_session_file(&removed);
 
                 self.sessions.push(removed);
-                let _ = store.save_trash(&self.trash);
 
                 self.set_status(format!("Restored: {}", id));
                 if self.selected_session_idx > 0 && self.selected_session_idx >= self.trash.len() {
@@ -426,11 +422,10 @@ impl App {
 
         let store = SessionStore::new();
         for session in &empty {
-            let _ = store.delete_session_file(&session.project_name, &session.id);
+            let _ = store.move_to_trash(&session.project_name, &session.id);
         }
 
         self.trash.extend(empty);
-        let _ = store.save_trash(&self.trash);
 
         if self.selected_session_idx >= self.sessions.len() && !self.sessions.is_empty() {
             self.selected_session_idx = self.sessions.len() - 1;
@@ -480,10 +475,6 @@ impl App {
         if let Some(pos) = self.trash.iter().position(|s| s.id == session_id) {
             self.trash.remove(pos);
 
-            // Save trash to disk
-            let store = SessionStore::new();
-            let _ = store.save_trash(&self.trash);
-
             self.set_status(format!("Permanently deleted: {}", session_id));
             self.confirm_action = None;
 
@@ -497,12 +488,9 @@ impl App {
         let count = self.trash.len();
 
         let store = SessionStore::new();
-        for session in &self.trash {
-            let _ = store.delete_session_file(&session.project_name, &session.id);
-        }
+        let _ = store.empty_trash();
 
         self.trash.clear();
-        let _ = store.save_trash(&self.trash);
 
         self.set_status(format!("Permanently deleted {} sessions", count));
         self.confirm_action = None;

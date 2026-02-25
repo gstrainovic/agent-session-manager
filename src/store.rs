@@ -47,20 +47,17 @@ impl SessionStore {
         } else {
             dirs::home_dir().expect("home dir").join(".claude")
         };
-        let projects_path = base.join("projects");
-        let trash_path = base.join("trash.json");
         Self {
-            projects_path,
-            trash_path,
+            projects_path: base.join("projects"),
+            trash_path: base.join("trash"),
         }
     }
 
     #[cfg(test)]
-    pub fn with_path(path: PathBuf) -> Self {
-        let trash_path = path.join("trash.json");
+    pub fn with_base(base: PathBuf) -> Self {
         Self {
-            projects_path: path,
-            trash_path,
+            projects_path: base.join("projects"),
+            trash_path: base.join("trash"),
         }
     }
 
@@ -242,16 +239,36 @@ impl SessionStore {
         if !self.trash_path.exists() {
             return Ok(Vec::new());
         }
-
-        let content = fs::read_to_string(&self.trash_path)?;
-        let sessions: Vec<Session> = serde_json::from_str(&content)?;
+        let mut sessions = Vec::new();
+        for project_entry in fs::read_dir(&self.trash_path)? {
+            let project_entry = project_entry?;
+            let project_path = project_entry.path();
+            if !project_path.is_dir() {
+                continue;
+            }
+            let project_slug = project_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let resolved_path = slug_to_path(&project_slug)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| project_slug.clone());
+            for file_entry in fs::read_dir(&project_path)? {
+                let file_entry = file_entry?;
+                let file_path = file_entry.path();
+                if file_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                if let Ok(session) =
+                    self.load_session_from_jsonl(&file_path, &project_slug, &resolved_path)
+                {
+                    sessions.push(session);
+                }
+            }
+        }
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         Ok(sessions)
-    }
-
-    pub fn save_trash(&self, trash: &[Session]) -> Result<()> {
-        let json = serde_json::to_string_pretty(trash)?;
-        fs::write(&self.trash_path, json)?;
-        Ok(())
     }
 
     /// Returns the path to a session's JSONL file based on project_name and id
@@ -261,17 +278,33 @@ impl SessionStore {
             .join(format!("{}.jsonl", session_id))
     }
 
-    /// Deletes a session's JSONL file from the projects directory
-    pub fn delete_session_file(&self, project_name: &str, session_id: &str) -> Result<()> {
-        let path = self.get_session_file_path(project_name, session_id);
-        if path.exists() {
-            fs::remove_file(&path)?;
-        }
+    /// Moves a session's JSONL file from projects to trash directory
+    pub fn move_to_trash(&self, project_name: &str, session_id: &str) -> Result<()> {
+        let src = self.get_session_file_path(project_name, session_id);
+        let dst_dir = self.trash_path.join(project_name);
+        fs::create_dir_all(&dst_dir)?;
+        let dst = dst_dir.join(format!("{}.jsonl", session_id));
+        fs::rename(&src, &dst)?;
         Ok(())
     }
 
-    pub fn restore_session_file(&self, _session: &Session) -> Result<()> {
-        // Stub: wird in Task 2 mit directory-based trash implementiert (fs::rename)
+    /// Restores a session's JSONL file from trash back to projects directory
+    pub fn restore_session_file(&self, session: &Session) -> Result<()> {
+        let src = self.trash_path
+            .join(&session.project_name)
+            .join(format!("{}.jsonl", session.id));
+        let dst_dir = self.projects_path.join(&session.project_name);
+        fs::create_dir_all(&dst_dir)?;
+        let dst = dst_dir.join(format!("{}.jsonl", session.id));
+        fs::rename(&src, &dst)?;
+        Ok(())
+    }
+
+    /// Removes the entire trash directory
+    pub fn empty_trash(&self) -> Result<()> {
+        if self.trash_path.exists() {
+            fs::remove_dir_all(&self.trash_path)?;
+        }
         Ok(())
     }
 }
@@ -284,21 +317,21 @@ mod tests {
 
     fn create_test_store() -> (TempDir, SessionStore) {
         let tmp = TempDir::new().unwrap();
-        let store = SessionStore::with_path(tmp.path().to_path_buf());
+        let store = SessionStore::with_base(tmp.path().to_path_buf());
         (tmp, store)
     }
 
     #[test]
     fn test_empty_dir_returns_empty() {
         let (tmp, store) = create_test_store();
-        fs::create_dir_all(tmp.path()).unwrap();
+        fs::create_dir_all(tmp.path().join("projects")).unwrap();
         let sessions = store.load_sessions().unwrap();
         assert!(sessions.is_empty());
     }
 
     #[test]
     fn test_nonexistent_dir_returns_empty() {
-        let store = SessionStore::with_path(PathBuf::from("/tmp/nonexistent-test-dir-xyz"));
+        let store = SessionStore::with_base(PathBuf::from("/tmp/nonexistent-test-dir-xyz"));
         let sessions = store.load_sessions().unwrap();
         assert!(sessions.is_empty());
     }
@@ -307,7 +340,7 @@ mod tests {
     fn test_loads_sessions_from_project_subdirs() {
         let (tmp, store) = create_test_store();
 
-        let project_dir = tmp.path().join("-home-g-myproject");
+        let project_dir = tmp.path().join("projects/-home-g-myproject");
         fs::create_dir_all(&project_dir).unwrap();
 
         let jsonl_content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"a1"}
@@ -333,7 +366,7 @@ mod tests {
     fn test_multiple_sessions_in_one_project() {
         let (tmp, store) = create_test_store();
 
-        let project_dir = tmp.path().join("-home-g-project");
+        let project_dir = tmp.path().join("projects/-home-g-project");
         fs::create_dir_all(&project_dir).unwrap();
 
         let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
@@ -349,7 +382,7 @@ mod tests {
     fn test_skips_non_jsonl_files() {
         let (tmp, store) = create_test_store();
 
-        let project_dir = tmp.path().join("-home-g-project");
+        let project_dir = tmp.path().join("projects/-home-g-project");
         fs::create_dir_all(&project_dir).unwrap();
 
         fs::write(project_dir.join("not-a-session.txt"), "hello").unwrap();
@@ -363,7 +396,7 @@ mod tests {
     fn test_sessions_sorted_by_updated_at_desc() {
         let (tmp, store) = create_test_store();
 
-        let project_dir = tmp.path().join("-home-g-project");
+        let project_dir = tmp.path().join("projects/-home-g-project");
         fs::create_dir_all(&project_dir).unwrap();
 
         let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
@@ -383,8 +416,8 @@ mod tests {
     fn test_count_session_files() {
         let (tmp, store) = create_test_store();
 
-        let p1 = tmp.path().join("project-a");
-        let p2 = tmp.path().join("project-b");
+        let p1 = tmp.path().join("projects/project-a");
+        let p2 = tmp.path().join("projects/project-b");
         fs::create_dir_all(&p1).unwrap();
         fs::create_dir_all(&p2).unwrap();
 
@@ -401,7 +434,7 @@ mod tests {
     fn test_load_sessions_with_progress() {
         let (tmp, store) = create_test_store();
 
-        let p1 = tmp.path().join("project-a");
+        let p1 = tmp.path().join("projects/project-a");
         fs::create_dir_all(&p1).unwrap();
 
         let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
@@ -443,50 +476,80 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_session_file_removes_from_load() {
+    fn test_move_to_trash_moves_file() {
         let (tmp, store) = create_test_store();
-
-        let project_dir = tmp.path().join("-home-g-myproject");
+        let project_dir = tmp.path().join("projects/-home-g-project");
         fs::create_dir_all(&project_dir).unwrap();
+        let line = r#"{"type":"user","message":{"role":"user","content":"hi"},"uuid":"x"}"#;
+        fs::write(project_dir.join("s1.jsonl"), line).unwrap();
 
-        let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
-        fs::write(project_dir.join("test-session.jsonl"), line).unwrap();
+        store.move_to_trash("-home-g-project", "s1").unwrap();
+
+        assert!(!project_dir.join("s1.jsonl").exists());
+        assert!(tmp.path().join("trash/-home-g-project/s1.jsonl").exists());
+    }
+
+    #[test]
+    fn test_load_trash_reads_moved_files() {
+        let (tmp, store) = create_test_store();
+        let trash_dir = tmp.path().join("trash/-home-g-project");
+        fs::create_dir_all(&trash_dir).unwrap();
+        let line = r#"{"type":"user","message":{"role":"user","content":"hi"},"uuid":"x"}"#;
+        fs::write(trash_dir.join("s1.jsonl"), line).unwrap();
+
+        let trash = store.load_trash().unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].id, "s1");
+        assert_eq!(trash[0].project_name, "-home-g-project");
+    }
+
+    #[test]
+    fn test_restore_moves_file_back() {
+        let (tmp, store) = create_test_store();
+        let project_dir = tmp.path().join("projects/-home-g-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let line = r#"{"type":"user","message":{"role":"user","content":"hi"},"uuid":"x"}"#;
+        fs::write(project_dir.join("s1.jsonl"), line).unwrap();
+
+        store.move_to_trash("-home-g-project", "s1").unwrap();
+        let trash = store.load_trash().unwrap();
+        store.restore_session_file(&trash[0]).unwrap();
+
+        assert!(project_dir.join("s1.jsonl").exists());
+        assert!(!tmp.path().join("trash/-home-g-project/s1.jsonl").exists());
+    }
+
+    #[test]
+    fn test_empty_trash_removes_directory() {
+        let (tmp, store) = create_test_store();
+        let project_dir = tmp.path().join("projects/-home-g-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let line = r#"{"type":"user","message":{"role":"user","content":"hi"},"uuid":"x"}"#;
+        fs::write(project_dir.join("s1.jsonl"), line).unwrap();
+
+        store.move_to_trash("-home-g-project", "s1").unwrap();
+        assert!(tmp.path().join("trash").exists());
+
+        store.empty_trash().unwrap();
+        assert!(!tmp.path().join("trash").exists());
+    }
+
+    #[test]
+    fn test_load_sessions_ignores_trash_dir() {
+        let (tmp, store) = create_test_store();
+        let project_dir = tmp.path().join("projects/-home-g-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let line = r#"{"type":"user","message":{"role":"user","content":"hi"},"uuid":"x"}"#;
+        fs::write(project_dir.join("s1.jsonl"), line).unwrap();
+
+        // Session in trash — darf NICHT in load_sessions erscheinen
+        let trash_dir = tmp.path().join("trash/-home-g-project");
+        fs::create_dir_all(&trash_dir).unwrap();
+        fs::write(trash_dir.join("s2.jsonl"), line).unwrap();
 
         let sessions = store.load_sessions().unwrap();
         assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].id, "test-session");
-
-        store
-            .delete_session_file("-home-g-myproject", "test-session")
-            .unwrap();
-
-        let sessions_after_delete = store.load_sessions().unwrap();
-        assert_eq!(sessions_after_delete.len(), 0);
-    }
-
-    #[test]
-    fn test_delete_session_file_is_idempotent() {
-        let (_tmp, store) = create_test_store();
-
-        let result = store.delete_session_file("-home-g-nonexistent", "no-session");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_restore_session_file_is_stub() {
-        // restore_session_file ist ein Stub bis Task 2 directory-based trash implementiert.
-        let (_tmp, store) = create_test_store();
-        let session = Session {
-            id: "s".to_string(),
-            project_path: "/p".to_string(),
-            project_name: "p".to_string(),
-            created_at: "".to_string(),
-            updated_at: "".to_string(),
-            size: 0,
-            total_entries: 0,
-            messages: vec![],
-        };
-        assert!(store.restore_session_file(&session).is_ok());
+        assert_eq!(sessions[0].id, "s1");
     }
 
     #[test]
@@ -506,28 +569,24 @@ mod tests {
     }
 
     #[test]
-    fn test_load_trash_reads_saved_sessions() {
-        let (_tmp, store) = create_test_store();
-        let sessions = vec![Session {
-            id: "trash-1".to_string(),
-            project_path: "/home/g/proj".to_string(),
-            project_name: "proj".to_string(),
-            created_at: "2026-01-01".to_string(),
-            updated_at: "2026-01-01".to_string(),
-            size: 100,
-            total_entries: 1,
-            messages: vec![],
-        }];
-        store.save_trash(&sessions).unwrap();
-        let loaded = store.load_trash().unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].id, "trash-1");
-    }
-
-    #[test]
-    fn test_load_trash_invalid_json_returns_error() {
+    fn test_move_to_trash_removes_from_load_sessions() {
         let (tmp, store) = create_test_store();
-        fs::write(tmp.path().join("trash.json"), "not valid json").unwrap();
-        assert!(store.load_trash().is_err());
+
+        let project_dir = tmp.path().join("projects/-home-g-myproject");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let line = r#"{"type":"user","message":{"role":"user","content":"msg"},"uuid":"x"}"#;
+        fs::write(project_dir.join("test-session.jsonl"), line).unwrap();
+
+        let sessions = store.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "test-session");
+
+        store
+            .move_to_trash("-home-g-myproject", "test-session")
+            .unwrap();
+
+        let sessions_after_delete = store.load_sessions().unwrap();
+        assert_eq!(sessions_after_delete.len(), 0);
     }
 }
