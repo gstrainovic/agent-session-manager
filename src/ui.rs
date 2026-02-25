@@ -86,17 +86,15 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     let session_count = app.sessions.len();
     let trash_count = app.trash.len();
 
-    let (sessions_marker, sessions_style) = if app.current_tab == Tab::Sessions {
-        ("●", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-    } else {
-        ("○", Style::default().fg(Color::DarkGray))
+    let tab_indicator = |tab: Tab| {
+        if app.current_tab == tab {
+            ("●", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        } else {
+            ("○", Style::default().fg(Color::DarkGray))
+        }
     };
-
-    let (trash_marker, trash_style) = if app.current_tab == Tab::Trash {
-        ("●", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-    } else {
-        ("○", Style::default().fg(Color::DarkGray))
-    };
+    let (sessions_marker, sessions_style) = tab_indicator(Tab::Sessions);
+    let (trash_marker, trash_style) = tab_indicator(Tab::Trash);
 
     let tabs = vec![
         Span::styled(
