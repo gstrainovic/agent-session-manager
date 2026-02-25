@@ -161,11 +161,19 @@ fn test_delete_moves_session_to_trash() {
     );
     let sessions = load_sessions(&env);
 
+    env.activate();
     let mut app = App::new(sessions, vec![]);
     assert_eq!(app.sessions.len(), 1);
     app.move_selected_to_trash();
     assert_eq!(app.sessions.len(), 0);
     assert_eq!(app.trash.len(), 1);
+    TestEnv::deactivate();
+
+    // Dateisystem prüfen — Datei muss im trash-Verzeichnis liegen
+    let trash_file = env.claude_dir.join("trash/-del-project/uuid-del.jsonl");
+    assert!(trash_file.exists(), "JSONL muss im trash-Verzeichnis liegen: {:?}", trash_file);
+    let original = env.claude_dir.join("projects/-del-project/uuid-del.jsonl");
+    assert!(!original.exists(), "Original muss verschwunden sein: {:?}", original);
 }
 
 #[test]
@@ -179,12 +187,20 @@ fn test_restore_session_from_trash() {
     );
     let sessions = load_sessions(&env);
 
+    env.activate();
     let mut app = App::new(sessions, vec![]);
     app.move_selected_to_trash();
     app.switch_tab();
     app.restore_selected_from_trash();
     assert_eq!(app.sessions.len(), 1);
     assert_eq!(app.trash.len(), 0);
+    TestEnv::deactivate();
+
+    // Datei ist zurück im projects-Verzeichnis
+    let restored_file = env.claude_dir.join("projects/-restore-project/uuid-restore.jsonl");
+    assert!(restored_file.exists(), "Datei muss zurück im projects-Verzeichnis sein");
+    let trash_file = env.claude_dir.join("trash/-restore-project/uuid-restore.jsonl");
+    assert!(!trash_file.exists(), "Datei darf nicht mehr im trash sein");
 }
 
 #[test]
@@ -194,6 +210,7 @@ fn test_empty_trash() {
     create_fixture_session(&env.claude_dir, "-p2", "uuid-t2", &[("user", "msg2")]);
     let sessions = load_sessions(&env);
 
+    env.activate();
     let mut app = App::new(sessions, vec![]);
     app.move_selected_to_trash();
     app.select_next();
@@ -204,4 +221,12 @@ fn test_empty_trash() {
     app.request_empty_trash();
     app.confirm_and_execute();
     assert_eq!(app.trash.len(), 0);
+    TestEnv::deactivate();
+
+    // Trash-Verzeichnis muss leer oder nicht vorhanden sein
+    let trash_dir = env.claude_dir.join("trash");
+    assert!(
+        !trash_dir.exists() || trash_dir.read_dir().map(|mut d| d.next().is_none()).unwrap_or(true),
+        "Trash-Verzeichnis muss leer sein"
+    );
 }
