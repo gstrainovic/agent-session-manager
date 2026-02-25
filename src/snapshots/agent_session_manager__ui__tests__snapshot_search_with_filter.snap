@@ -3,9 +3,9 @@ source: src/ui.rs
 expression: terminal.backend()
 ---
 "┌ Agent Session Manager ───────────────────────────────────────────────────────────────────────────┐"
-"│  ● Sessions (2)    ○ Trash (0)  │  Tab: switch  h: help                                          │"
+"│  ● 1 Sessions (2)    ○ 2 Trash (0)  │  h help                                                    │"
 "└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
-"┌ Sessions (1) ──────────────┐┌ Preview  ↓ 1/2 ────────────────────────────────────────────────────┐"
+"┌ Sessions (1) ──────────────┐┌ Preview ───────────────────────────────────────────────────────────┐"
 "│Project      Date ▼  Msgs   ││Project: alpha-project                                              │"
 "│alpha-projec 2026-01 1      ││Session: abc12345                                                   │"
 "│                            ││Updated: 2026-01-15T12:00:00+01:00                                  │"
@@ -17,8 +17,8 @@ expression: terminal.backend()
 "│                            ││                                                                    │"
 "│                            ││▶ You:                                                              │"
 "│                            ││  alpha content                                                     │"
+"│                            ││                                                                    │"
 "└────────────────────────────┘└────────────────────────────────────────────────────────────────────┘"
 "────────────────────────────────────────────────────────────────────────────────────────────────────"
-"↑↓ nav  ←→ focus  │  [Enter] resume  [d]elete  [e]xport  [0] clean                                  "
-"                   │  [Ctrl+F] search  [s] sort  [S] dir  [g] settings  [h]elp  [q]uit              "
+"↑↓ nav  ←→ focus  │  Enter resume  d delete  e export  0 clean  f search  s sort  g settings  h help"
 "                                                                                                    "

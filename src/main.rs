@@ -165,9 +165,11 @@ fn handle_key_event(
                 return Some(Ok(None));
             }
         }
-        KeyCode::Char('f') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+        KeyCode::Char('f') if !app.show_search => {
             app.toggle_search();
         }
+        KeyCode::Char('1') if !app.show_search => app.switch_to_tab(crate::app::Tab::Sessions),
+        KeyCode::Char('2') if !app.show_search => app.switch_to_tab(crate::app::Tab::Trash),
         KeyCode::Tab if !app.show_search => app.switch_tab(),
         KeyCode::Up if !app.show_search => match app.focus {
             crate::app::FocusPanel::List => app.select_prev(),
@@ -344,14 +346,6 @@ mod tests {
         }
     }
 
-    fn press_ctrl(code: KeyCode) -> KeyEvent {
-        KeyEvent {
-            code,
-            modifiers: KeyModifiers::CONTROL,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        }
-    }
 
     // --- cmd_quote / shell_escape ---
 
@@ -421,10 +415,25 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_ctrl_f_toggles_search() {
+    fn test_handle_f_toggles_search() {
         let mut app = App::with_sessions(vec![]);
-        handle_key_event(&mut app, press_ctrl(KeyCode::Char('f')));
+        handle_key_event(&mut app, press(KeyCode::Char('f')));
         assert!(app.show_search);
+    }
+
+    #[test]
+    fn test_handle_1_switches_to_sessions() {
+        let mut app = App::with_sessions(vec![]);
+        app.current_tab = crate::app::Tab::Trash;
+        handle_key_event(&mut app, press(KeyCode::Char('1')));
+        assert_eq!(app.current_tab, crate::app::Tab::Sessions);
+    }
+
+    #[test]
+    fn test_handle_2_switches_to_trash() {
+        let mut app = App::with_sessions(vec![]);
+        handle_key_event(&mut app, press(KeyCode::Char('2')));
+        assert_eq!(app.current_tab, crate::app::Tab::Trash);
     }
 
     #[test]

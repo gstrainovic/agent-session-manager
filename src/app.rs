@@ -135,6 +135,12 @@ impl App {
         self.preview_scroll = 0;
     }
 
+    pub fn switch_to_tab(&mut self, tab: Tab) {
+        self.current_tab = tab;
+        self.selected_session_idx = 0;
+        self.preview_scroll = 0;
+    }
+
     pub fn get_selected_session(&self) -> Option<&Session> {
         let filtered = self.filtered_sessions();
         filtered.get(self.selected_session_idx).copied()

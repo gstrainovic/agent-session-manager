@@ -3,7 +3,7 @@ source: src/ui.rs
 expression: terminal.backend()
 ---
 "┌ Agent Session Manager ───────────────────────────────────────────────────────────────────────────┐"
-"│  ● Sessions (1)    ○ Trash (0)  │  Tab: switch  h: help                                          │"
+"│  ● 1 Sessions (1)    ○ 2 Trash (0)  │  h help                                                    │"
 "└─────────┌ Help (Esc/h to close, ↑/↓ to scroll) ────────────────────────────────────────┐─────────┘"
 "┌ Sessions│Agent Session Manager - Help                                                  │─────────┐"
 "│Project  │                                                                              │         │"
@@ -17,8 +17,8 @@ expression: terminal.backend()
 "│         │| `←` / `→` | Switch focus between list and preview |                         │         │"
 "│         │| `Enter` | Switch to selected session |                                      │         │"
 "│         │| `Tab` | Switch between Sessions/Trash |                                     │         │"
-"└─────────│| `Ctrl+F` | Open search |                                                    │─────────┘"
-"──────────│| `s` | Toggle sort (Project → Msgs → Date) |                                 │──────────"
-"↑↓ nav  ←→└──────────────────────────────────────────────────────────────────────────────┘          "
-"                   │  [Ctrl+F] search  [s] sort  [S] dir  [g] settings  [h]elp  [q]uit              "
+"│         │| `Ctrl+F` | Open search |                                                    │         │"
+"└─────────│| `s` | Toggle sort (Project → Msgs → Date) |                                 │─────────┘"
+"──────────└──────────────────────────────────────────────────────────────────────────────┘──────────"
+"↑↓ nav  ←→ focus  │  Enter resume  d delete  e export  0 clean  f search  s sort  g settings  h help"
 "                                                                                                    "

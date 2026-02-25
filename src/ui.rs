@@ -51,7 +51,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             [
                 Constraint::Length(3),
                 Constraint::Min(10),
-                Constraint::Length(4),
+                Constraint::Length(3),
             ]
             .as_ref(),
         )
@@ -98,15 +98,15 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
 
     let tabs = vec![
         Span::styled(
-            format!("  {} Sessions ({})  ", sessions_marker, session_count),
+            format!("  {} 1 Sessions ({})  ", sessions_marker, session_count),
             sessions_style,
         ),
         Span::styled(
-            format!("  {} Trash ({})  ", trash_marker, trash_count),
+            format!("  {} 2 Trash ({})  ", trash_marker, trash_count),
             trash_style,
         ),
         Span::styled(
-            "│  Tab: switch  h: help  ",
+            "│  h help  ",
             Style::default().fg(Color::DarkGray),
         ),
     ];
@@ -364,13 +364,10 @@ fn draw_search_modal(f: &mut Frame, app: &App) {
     f.render_widget(search, area);
 }
 
-/// Indentation for the second command line, aligns │ under line1's "↑↓ nav  ←→ focus  ".
-const LINE2_INDENT: &str = "                   "; // 19 spaces
-
 fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
-    let sep = Span::styled("│", Style::default().fg(Color::DarkGray));
+    let sep = Span::styled("  │  ", Style::default().fg(Color::DarkGray));
 
-    // Status-Nachricht: volle Breite, 1 Zeile
+    // Status-Nachricht: volle Breite
     if let Some(ref msg) = app.status_message {
         let bar = Paragraph::new(Line::from(vec![
             Span::styled(msg.as_str(), Style::default().fg(Color::Green)),
@@ -382,57 +379,34 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let c = |s: &'static str, color: Color| Span::styled(s, Style::default().fg(color));
-    let w = |s: &'static str| Span::raw(s);
+    let k = |s: &'static str| Span::styled(s, Style::default().fg(Color::Cyan));
+    let d = |s: &'static str| Span::styled(s, Style::default().fg(Color::Red));
+    let t = |s: &'static str| Span::raw(s);
 
-    // Shared tail spans for line2, common to all tabs.
-    let shared_line2_tail: Vec<Span> = vec![
-        c("[s]", Color::Magenta), w(" sort  "),
-        c("[S]", Color::Magenta), w(" dir  "),
-        c("[g]", Color::Magenta), w(" settings  "),
-        c("[h]", Color::DarkGray), w("elp  "),
-        c("[q]", Color::DarkGray), w("uit"),
+    let nav = vec![
+        k("↑↓"), t(" nav  "), k("←→"), t(" focus"),
     ];
 
-    let (line1, line2) = match app.current_tab {
-        Tab::Sessions => {
-            let mut l2_spans = vec![
-                w(LINE2_INDENT), sep.clone(), w("  "),
-                c("[Ctrl+F]", Color::Cyan), w(" search  "),
-            ];
-            l2_spans.extend(shared_line2_tail);
-            (
-                Line::from(vec![
-                    c("↑↓", Color::Cyan), w(" nav  "),
-                    c("←→", Color::Cyan), w(" focus  "),
-                    sep.clone(), w("  "),
-                    c("[Enter]", Color::Cyan), w(" resume  "),
-                    c("[d]", Color::Red), w("elete  "),
-                    c("[e]", Color::Yellow), w("xport  "),
-                    c("[0]", Color::Red), w(" clean  "),
-                ]),
-                Line::from(l2_spans),
-            )
-        },
-        Tab::Trash => {
-            let mut l2_spans = vec![w(LINE2_INDENT), sep.clone(), w("  ")];
-            l2_spans.extend(shared_line2_tail);
-            (
-                Line::from(vec![
-                    c("↑↓", Color::Cyan), w(" nav  "),
-                    c("←→", Color::Cyan), w(" focus  "),
-                    sep.clone(), w("  "),
-                    c("[r]", Color::Green), w("estore  "),
-                    c("[d]", Color::Red), w("elete  "),
-                    c("[t]", Color::Red), w(" empty trash  "),
-                ]),
-                Line::from(l2_spans),
-            )
-        },
+    let actions: Vec<Span> = match app.current_tab {
+        Tab::Sessions => vec![
+            k("Enter"), t(" resume  "), d("d"), t(" delete  "),
+            k("e"), t(" export  "), d("0"), t(" clean  "),
+            k("f"), t(" search  "), k("s"), t(" sort  "),
+            k("g"), t(" settings  "), k("h"), t(" help  "), k("q"), t(" quit"),
+        ],
+        Tab::Trash => vec![
+            k("Enter"), t(" restore  "), d("d"), t(" delete  "),
+            d("t"), t(" empty  "),
+            k("s"), t(" sort  "),
+            k("g"), t(" settings  "), k("h"), t(" help  "), k("q"), t(" quit"),
+        ],
     };
 
-    let text = ratatui::text::Text::from(vec![line1, line2]);
-    let bar = Paragraph::new(text).block(
+    let mut spans = nav;
+    spans.push(sep);
+    spans.extend(actions);
+
+    let bar = Paragraph::new(Line::from(spans)).block(
         Block::default()
             .borders(Borders::TOP)
             .border_style(Style::default().fg(Color::DarkGray)),
