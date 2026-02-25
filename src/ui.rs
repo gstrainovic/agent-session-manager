@@ -352,6 +352,9 @@ fn draw_search_modal(f: &mut Frame, app: &App) {
     f.render_widget(search, area);
 }
 
+/// Indentation for the second command line, aligns │ under line1's "↑↓ nav  ←→ focus  ".
+const LINE2_INDENT: &str = "                   "; // 19 spaces
+
 fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
     let sep = Span::styled("│", Style::default().fg(Color::DarkGray));
 
@@ -370,47 +373,50 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
     let c = |s: &'static str, color: Color| Span::styled(s, Style::default().fg(color));
     let w = |s: &'static str| Span::raw(s);
 
+    // Shared tail spans for line2, common to all tabs.
+    let shared_line2_tail: Vec<Span> = vec![
+        c("[s]", Color::Magenta), w(" sort  "),
+        c("[S]", Color::Magenta), w(" dir  "),
+        c("[g]", Color::Magenta), w(" settings  "),
+        c("[h]", Color::DarkGray), w("elp  "),
+        c("[q]", Color::DarkGray), w("uit"),
+    ];
+
     let (line1, line2) = match app.current_tab {
-        Tab::Sessions => (
-            Line::from(vec![
-                c("↑↓", Color::Cyan), w(" nav  "),
-                c("←→", Color::Cyan), w(" focus  "),
-                sep.clone(), w("  "),
-                c("[Enter]", Color::Cyan), w(" resume  "),
-                c("[d]", Color::Red), w("elete  "),
-                c("[e]", Color::Yellow), w("xport  "),
-                c("[0]", Color::Red), w(" clean  "),
-            ]),
-            Line::from(vec![
-                w("                   "),
-                sep.clone(), w("  "),
-                c("[s]", Color::Magenta), w(" sort  "),
-                c("[S]", Color::Magenta), w(" dir  "),
+        Tab::Sessions => {
+            let mut l2_spans = vec![
+                w(LINE2_INDENT), sep.clone(), w("  "),
                 c("[Ctrl+F]", Color::Cyan), w(" search  "),
-                c("[g]", Color::Magenta), w(" settings  "),
-                c("[h]", Color::DarkGray), w("elp  "),
-                c("[q]", Color::DarkGray), w("uit"),
-            ]),
-        ),
-        Tab::Trash => (
-            Line::from(vec![
-                c("↑↓", Color::Cyan), w(" nav  "),
-                c("←→", Color::Cyan), w(" focus  "),
-                sep.clone(), w("  "),
-                c("[r]", Color::Green), w("estore  "),
-                c("[d]", Color::Red), w("elete  "),
-                c("[t]", Color::Red), w(" empty trash  "),
-            ]),
-            Line::from(vec![
-                w("                   "),
-                sep.clone(), w("  "),
-                c("[s]", Color::Magenta), w(" sort  "),
-                c("[S]", Color::Magenta), w(" dir  "),
-                c("[g]", Color::Magenta), w(" settings  "),
-                c("[h]", Color::DarkGray), w("elp  "),
-                c("[q]", Color::DarkGray), w("uit"),
-            ]),
-        ),
+            ];
+            l2_spans.extend(shared_line2_tail);
+            (
+                Line::from(vec![
+                    c("↑↓", Color::Cyan), w(" nav  "),
+                    c("←→", Color::Cyan), w(" focus  "),
+                    sep.clone(), w("  "),
+                    c("[Enter]", Color::Cyan), w(" resume  "),
+                    c("[d]", Color::Red), w("elete  "),
+                    c("[e]", Color::Yellow), w("xport  "),
+                    c("[0]", Color::Red), w(" clean  "),
+                ]),
+                Line::from(l2_spans),
+            )
+        },
+        Tab::Trash => {
+            let mut l2_spans = vec![w(LINE2_INDENT), sep.clone(), w("  ")];
+            l2_spans.extend(shared_line2_tail);
+            (
+                Line::from(vec![
+                    c("↑↓", Color::Cyan), w(" nav  "),
+                    c("←→", Color::Cyan), w(" focus  "),
+                    sep.clone(), w("  "),
+                    c("[r]", Color::Green), w("estore  "),
+                    c("[d]", Color::Red), w("elete  "),
+                    c("[t]", Color::Red), w(" empty trash  "),
+                ]),
+                Line::from(l2_spans),
+            )
+        },
     };
 
     let text = ratatui::text::Text::from(vec![line1, line2]);
