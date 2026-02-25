@@ -17,6 +17,8 @@ rayon = "1.10"
 [dev-dependencies]
 insta = "1.46.3"
 tempfile = "3"
+ratatui-testlib = { version = "0.1.0", features = ["ratatui-helpers"] }
+portable-pty = "0.8"
 
 [lib]
 name = "agent_session_manager"
