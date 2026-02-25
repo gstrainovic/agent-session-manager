@@ -300,10 +300,22 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(""));
         }
 
+        // Scroll indicator in title
+        let total_lines = lines.len();
+        let visible_height = area.height.saturating_sub(2) as usize; // minus Borders
+
+        let title = if total_lines > visible_height {
+            let current_page = (app.preview_scroll as usize / visible_height.max(1)) + 1;
+            let total_pages = (total_lines + visible_height - 1) / visible_height.max(1);
+            format!(" Preview  ↓ {}/{} ", current_page, total_pages)
+        } else {
+            " Preview ".to_string()
+        };
+
         let preview = Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title(" Preview ")
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(if app.focus == FocusPanel::Preview {
                         Color::Yellow
