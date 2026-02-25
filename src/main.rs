@@ -111,8 +111,10 @@ fn run_app<B: Backend>(
             // Drain all pending events before next draw to avoid rendering artifacts
             loop {
                 if let Event::Key(key) = event::read()? {
-                    if let Some(result) = handle_key_event(&mut app, key) {
-                        return result;
+                    if key.kind == event::KeyEventKind::Press {
+                        if let Some(result) = handle_key_event(&mut app, key) {
+                            return result;
+                        }
                     }
                 }
                 // Check if more events are immediately available
