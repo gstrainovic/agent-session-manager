@@ -1,10 +1,9 @@
 ---
 source: src/ui.rs
-assertion_line: 933
 expression: terminal.backend()
 ---
 "┌ Agent Session Manager ───────────────────────────────────────────────────────────────────────────┐"
-"│  Sessions (1)    Trash (0)    [Tab] to switch                                                    │"
+"│  ● Sessions (1)    ○ Trash (0)  │  Tab: switch  h: help                                          │"
 "└─────────┌ Help (Esc/h to close, ↑/↓ to scroll) ────────────────────────────────────────┐─────────┘"
 "┌ Sessions│Agent Session Manager - Help                                                  │─────────┐"
 "│Project  │                                                                              │         │"

@@ -86,26 +86,31 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     let session_count = app.sessions.len();
     let trash_count = app.trash.len();
 
-    let sessions_style = if app.current_tab == Tab::Sessions {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+    let (sessions_marker, sessions_style) = if app.current_tab == Tab::Sessions {
+        ("●", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
     } else {
-        Style::default().fg(Color::Gray)
+        ("○", Style::default().fg(Color::DarkGray))
     };
 
-    let trash_style = if app.current_tab == Tab::Trash {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+    let (trash_marker, trash_style) = if app.current_tab == Tab::Trash {
+        ("●", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
     } else {
-        Style::default().fg(Color::Gray)
+        ("○", Style::default().fg(Color::DarkGray))
     };
 
     let tabs = vec![
-        Span::styled(format!("  Sessions ({})  ", session_count), sessions_style),
-        Span::styled(format!("  Trash ({})  ", trash_count), trash_style),
-        Span::styled("  [Tab] to switch  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("  {} Sessions ({})  ", sessions_marker, session_count),
+            sessions_style,
+        ),
+        Span::styled(
+            format!("  {} Trash ({})  ", trash_marker, trash_count),
+            trash_style,
+        ),
+        Span::styled(
+            "│  Tab: switch  h: help  ",
+            Style::default().fg(Color::DarkGray),
+        ),
     ];
 
     let tabs_line = Line::from(tabs);

@@ -3,7 +3,7 @@ source: src/ui.rs
 expression: terminal.backend()
 ---
 "┌ Agent Session Manager ───────────────────────────────────────────────────────────────────────────┐"
-"│  Sessions (0)    Trash (1)    [Tab] to switch                                                    │"
+"│  ○ Sessions (0)    ● Trash (1)  │  Tab: switch  h: help                                          │"
 "└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
 "┌ Trash (1) ─────────────────┐┌ Preview ───────────────────────────────────────────────────────────┐"
 "│Project      Date ▼  Msgs   ││Project: deleted-project                                            │"
