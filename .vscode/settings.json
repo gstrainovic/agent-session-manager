@@ -1,0 +1,5 @@
+{
+  "files.exclude": {
+    "tests/e2e/.tui-test": true
+  }
+}
