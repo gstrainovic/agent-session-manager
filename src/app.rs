@@ -1037,4 +1037,304 @@ mod tests {
         assert_eq!(cmd1, cmd2);
         assert_eq!(cmd1, Some("claude --resume persist-test".to_string()));
     }
+
+    #[test]
+    fn test_toggle_sort_cycles_fields() {
+        let mut app = App::with_sessions(vec![]);
+        assert_eq!(app.sort_field, SortField::Date);
+        app.toggle_sort();
+        assert_eq!(app.sort_field, SortField::Project);
+        app.toggle_sort();
+        assert_eq!(app.sort_field, SortField::Messages);
+        app.toggle_sort();
+        assert_eq!(app.sort_field, SortField::Date);
+    }
+
+    #[test]
+    fn test_toggle_sort_resets_direction_to_descending() {
+        let mut app = App::with_sessions(vec![]);
+        app.sort_direction = SortDirection::Ascending;
+        app.toggle_sort();
+        assert_eq!(app.sort_direction, SortDirection::Descending);
+    }
+
+    #[test]
+    fn test_toggle_sort_direction() {
+        let mut app = App::with_sessions(vec![]);
+        assert_eq!(app.sort_direction, SortDirection::Descending);
+        app.toggle_sort_direction();
+        assert_eq!(app.sort_direction, SortDirection::Ascending);
+        app.toggle_sort_direction();
+        assert_eq!(app.sort_direction, SortDirection::Descending);
+    }
+
+    #[test]
+    fn test_toggle_help_opens_and_closes() {
+        let mut app = App::with_sessions(vec![]);
+        assert!(!app.show_help);
+        app.toggle_help();
+        assert!(app.show_help);
+        app.toggle_help();
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn test_toggle_help_resets_scroll_on_close() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_help();
+        app.help_scroll = 42;
+        app.toggle_help();
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[test]
+    fn test_help_scroll_up_and_down() {
+        let mut app = App::with_sessions(vec![]);
+        app.help_scroll_down(10);
+        assert_eq!(app.help_scroll, 10);
+        app.help_scroll_up(3);
+        assert_eq!(app.help_scroll, 7);
+        app.help_scroll_up(100);
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[test]
+    fn test_preview_scroll_up_and_down() {
+        let mut app = App::with_sessions(vec![]);
+        app.preview_scroll_down(5);
+        assert_eq!(app.preview_scroll, 5);
+        app.preview_scroll_up(3);
+        assert_eq!(app.preview_scroll, 2);
+        app.preview_scroll_up(100);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn test_toggle_search_opens_and_closes() {
+        let mut app = App::with_sessions(vec![]);
+        assert!(!app.show_search);
+        app.toggle_search();
+        assert!(app.show_search);
+        app.toggle_search();
+        assert!(!app.show_search);
+    }
+
+    #[test]
+    fn test_toggle_search_clears_query_on_close() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_search();
+        app.search_query = "test".to_string();
+        app.toggle_search();
+        assert!(app.search_query.is_empty());
+    }
+
+    #[test]
+    fn test_add_search_char_resets_selection() {
+        let mut app =
+            App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
+        app.selected_session_idx = 1;
+        app.add_search_char('x');
+        assert_eq!(app.selected_session_idx, 0);
+        assert_eq!(app.search_query, "x");
+    }
+
+    #[test]
+    fn test_pop_search_char_resets_selection() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.search_query = "abc".to_string();
+        app.selected_session_idx = 1;
+        app.pop_search_char();
+        assert_eq!(app.search_query, "ab");
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_cancel_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.request_delete_confirmation();
+        assert!(app.is_confirmation_pending());
+        app.cancel_confirmation();
+        assert!(!app.is_confirmation_pending());
+        assert!(app.status_message.unwrap().contains("cancelled"));
+    }
+
+    // --- confirm_and_execute / delete_permanently / empty_trash ---
+
+    #[test]
+    fn test_confirm_execute_delete_permanently() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("trash-1", "p1")];
+        app.current_tab = Tab::Trash;
+        app.confirm_action = Some(ConfirmAction::DeletePermanently("trash-1".to_string()));
+        app.confirm_and_execute();
+        assert!(app.trash.is_empty());
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_execute_empty_trash() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1"), make_session("t2", "p2")];
+        app.current_tab = Tab::Trash;
+        app.confirm_action = Some(ConfirmAction::EmptyTrash);
+        app.confirm_and_execute();
+        assert!(app.trash.is_empty());
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_execute_trash_zero_messages() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
+        app.sessions[1].messages.clear();
+        app.confirm_action = Some(ConfirmAction::TrashZeroMessages);
+        app.confirm_and_execute();
+        assert_eq!(app.sessions.len(), 1);
+        assert_eq!(app.trash.len(), 1);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_execute_delete_to_trash_is_noop() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.confirm_action = Some(ConfirmAction::DeleteToTrash("s1".to_string()));
+        app.confirm_and_execute();
+        // DeleteToTrash is handled in main.rs, so this is a no-op
+        assert_eq!(app.sessions.len(), 1);
+        assert!(app.confirm_action.is_some()); // not cleared by this path
+    }
+
+    #[test]
+    fn test_delete_permanently_adjusts_selection() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1"), make_session("t2", "p2")];
+        app.current_tab = Tab::Trash;
+        app.selected_session_idx = 1;
+        app.confirm_action = Some(ConfirmAction::DeletePermanently("t2".to_string()));
+        app.delete_permanently();
+        assert_eq!(app.trash.len(), 1);
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_delete_permanently_wrong_action_early_return() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.confirm_action = Some(ConfirmAction::EmptyTrash);
+        app.delete_permanently();
+        // Should do nothing because action is not DeletePermanently
+        assert_eq!(app.trash.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_trash_clears_all_and_resets() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1"), make_session("t2", "p2")];
+        app.current_tab = Tab::Trash;
+        app.selected_session_idx = 1;
+        app.confirm_action = Some(ConfirmAction::EmptyTrash);
+        app.empty_trash();
+        assert!(app.trash.is_empty());
+        assert_eq!(app.selected_session_idx, 0);
+        assert!(app.confirm_action.is_none());
+        assert!(app.status_message.unwrap().contains("2 sessions"));
+    }
+
+    #[test]
+    fn test_move_to_trash_noop_in_trash_tab() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.current_tab = Tab::Trash;
+        app.move_selected_to_trash();
+        assert_eq!(app.sessions.len(), 1);
+        assert!(app.trash.is_empty());
+    }
+
+    #[test]
+    fn test_request_empty_trash_noop_in_sessions_tab() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.request_empty_trash();
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_request_empty_trash_when_already_empty() {
+        let mut app = App::with_sessions(vec![]);
+        app.current_tab = Tab::Trash;
+        app.request_empty_trash();
+        assert!(app.confirm_action.is_none());
+        assert!(app.status_message.unwrap().contains("already empty"));
+    }
+
+    #[test]
+    fn test_request_delete_confirmation_in_trash_tab() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        app.request_delete_confirmation();
+        assert_eq!(
+            app.confirm_action,
+            Some(ConfirmAction::DeletePermanently("t1".to_string()))
+        );
+        assert!(app.status_message.unwrap().contains("PERMANENTLY"));
+    }
+
+    #[test]
+    fn test_request_trash_zero_messages_noop_in_trash_tab() {
+        let mut app = App::with_sessions(vec![]);
+        app.current_tab = Tab::Trash;
+        app.request_trash_zero_messages();
+        assert!(app.confirm_action.is_none());
+    }
+
+    // --- filtered_sessions sorting ---
+
+    #[test]
+    fn test_filtered_sessions_sorts_by_project() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "zulu"),
+            make_session("s2", "alpha"),
+        ]);
+        app.sort_field = SortField::Project;
+        app.sort_direction = SortDirection::Ascending;
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered[0].project_name, "alpha");
+        assert_eq!(filtered[1].project_name, "zulu");
+    }
+
+    #[test]
+    fn test_filtered_sessions_sorts_by_messages() {
+        let mut s1 = make_session("s1", "p1");
+        s1.messages.push(Message {
+            role: "user".to_string(),
+            content: "extra".to_string(),
+        });
+        let s2 = make_session("s2", "p2");
+        let mut app = App::with_sessions(vec![s1, s2]);
+        app.sort_field = SortField::Messages;
+        app.sort_direction = SortDirection::Ascending;
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered[0].messages.len(), 1); // s2 has 1
+        assert_eq!(filtered[1].messages.len(), 2); // s1 has 2
+    }
+
+    #[test]
+    fn test_filtered_sessions_descending_reverses() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "alpha"),
+            make_session("s2", "zulu"),
+        ]);
+        app.sort_field = SortField::Project;
+        app.sort_direction = SortDirection::Descending;
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered[0].project_name, "zulu");
+        assert_eq!(filtered[1].project_name, "alpha");
+    }
+
+    #[test]
+    fn test_confirm_execute_with_no_action() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.confirm_action = None;
+        app.confirm_and_execute(); // should not panic
+        assert_eq!(app.sessions.len(), 1);
+    }
 }

@@ -211,4 +211,38 @@ mod tests {
         let total = count_jsonl_entries(content);
         assert_eq!(total, 1, "Should skip invalid JSON lines");
     }
+
+    #[test]
+    fn test_parse_jsonl_missing_message_field() {
+        let line = r#"{"type":"user","uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(messages.len(), 0, "Should skip entry without message field");
+    }
+
+    #[test]
+    fn test_parse_jsonl_missing_content_field() {
+        let line = r#"{"type":"user","message":{"role":"user"},"uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(messages.len(), 0, "Should skip entry without content field");
+    }
+
+    #[test]
+    fn test_parse_jsonl_content_neither_string_nor_array() {
+        let line = r#"{"type":"user","message":{"role":"user","content":42},"uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(
+            messages.len(),
+            0,
+            "Should skip entry where content is a number"
+        );
+    }
+
+    #[test]
+    fn test_parse_jsonl_missing_role_uses_unknown() {
+        let line = r#"{"type":"user","message":{"content":"hello"},"uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "unknown");
+        assert_eq!(messages[0].content, "hello");
+    }
 }

@@ -514,4 +514,38 @@ mod tests {
         assert_eq!(store.projects_path, tmp.path().join("projects"));
         std::env::remove_var("CLAUDE_DATA_DIR");
     }
+
+    #[test]
+    fn test_load_trash_empty_when_no_file() {
+        let (_tmp, store) = create_test_store();
+        let trash = store.load_trash().unwrap();
+        assert!(trash.is_empty());
+    }
+
+    #[test]
+    fn test_load_trash_reads_saved_sessions() {
+        let (_tmp, store) = create_test_store();
+        let sessions = vec![Session {
+            id: "trash-1".to_string(),
+            project_path: "/home/g/proj".to_string(),
+            project_name: "proj".to_string(),
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01".to_string(),
+            size: 100,
+            total_entries: 1,
+            messages: vec![],
+            original_content: None,
+        }];
+        store.save_trash(&sessions).unwrap();
+        let loaded = store.load_trash().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "trash-1");
+    }
+
+    #[test]
+    fn test_load_trash_invalid_json_returns_error() {
+        let (tmp, store) = create_test_store();
+        fs::write(tmp.path().join("trash.json"), "not valid json").unwrap();
+        assert!(store.load_trash().is_err());
+    }
 }

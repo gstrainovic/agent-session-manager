@@ -126,6 +126,8 @@ fn run_app<B: Backend>(
     }
 }
 
+/// Handles a single key event, returning `Some(result)` if the app should exit,
+/// or `None` to continue the event loop.
 fn handle_key_event(
     app: &mut App,
     key: event::KeyEvent,
@@ -308,4 +310,410 @@ fn handle_key_event(
         _ => {}
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use crate::app::{FocusPanel, Tab};
+    use crate::models::{Message, Session};
+
+    fn make_session(id: &str, project: &str) -> Session {
+        Session {
+            id: id.to_string(),
+            project_path: format!("/home/g/{}", project),
+            project_name: project.to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            size: 0,
+            total_entries: 1,
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: "msg".to_string(),
+            }],
+            original_content: None,
+        }
+    }
+
+    fn press(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn press_ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    // --- cmd_quote / shell_escape ---
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_cmd_quote_simple() {
+        assert_eq!(cmd_quote("C:\\Users\\test"), "\"C:\\Users\\test\"");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_cmd_quote_with_quotes() {
+        assert_eq!(
+            cmd_quote("path with \"quotes\""),
+            "\"path with \"\"quotes\"\"\""
+        );
+    }
+
+    #[cfg(target_family = "unix")]
+    #[test]
+    fn test_shell_escape_simple() {
+        assert_eq!(shell_escape("/home/user/project"), "'/home/user/project'");
+    }
+
+    #[cfg(target_family = "unix")]
+    #[test]
+    fn test_shell_escape_with_quotes() {
+        assert_eq!(shell_escape("it's a path"), "'it'\\''s a path'");
+    }
+
+    // --- handle_key_event ---
+
+    #[test]
+    fn test_handle_q_quits() {
+        let mut app = App::with_sessions(vec![]);
+        let result = handle_key_event(&mut app, press(KeyCode::Char('q')));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_handle_tab_switches_tab() {
+        let mut app = App::with_sessions(vec![]);
+        handle_key_event(&mut app, press(KeyCode::Tab));
+        assert_eq!(app.current_tab, Tab::Trash);
+    }
+
+    #[test]
+    fn test_handle_s_toggles_sort() {
+        let mut app = App::with_sessions(vec![]);
+        let initial = app.sort_field;
+        handle_key_event(&mut app, press(KeyCode::Char('s')));
+        assert_ne!(app.sort_field, initial);
+    }
+
+    #[test]
+    fn test_handle_h_toggles_help() {
+        let mut app = App::with_sessions(vec![]);
+        handle_key_event(&mut app, press(KeyCode::Char('h')));
+        assert!(app.show_help);
+    }
+
+    #[test]
+    fn test_handle_g_opens_settings() {
+        let mut app = App::with_sessions(vec![]);
+        handle_key_event(&mut app, press(KeyCode::Char('g')));
+        assert!(app.show_settings);
+    }
+
+    #[test]
+    fn test_handle_ctrl_f_toggles_search() {
+        let mut app = App::with_sessions(vec![]);
+        handle_key_event(&mut app, press_ctrl(KeyCode::Char('f')));
+        assert!(app.show_search);
+    }
+
+    #[test]
+    fn test_handle_arrows_in_list() {
+        let mut app =
+            App::with_sessions(vec![make_session("s1", "p1"), make_session("s2", "p2")]);
+        handle_key_event(&mut app, press(KeyCode::Down));
+        assert_eq!(app.selected_session_idx, 1);
+        handle_key_event(&mut app, press(KeyCode::Up));
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_handle_arrows_in_preview() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus = FocusPanel::Preview;
+        handle_key_event(&mut app, press(KeyCode::Down));
+        assert_eq!(app.preview_scroll, 1);
+        handle_key_event(&mut app, press(KeyCode::Up));
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn test_handle_esc_cancels_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.request_delete_confirmation();
+        handle_key_event(&mut app, press(KeyCode::Esc));
+        assert!(!app.is_confirmation_pending());
+    }
+
+    #[test]
+    fn test_handle_search_mode_chars() {
+        let mut app = App::with_sessions(vec![]);
+        app.show_search = true;
+        handle_key_event(&mut app, press(KeyCode::Char('a')));
+        handle_key_event(&mut app, press(KeyCode::Char('b')));
+        assert_eq!(app.search_query, "ab");
+        handle_key_event(&mut app, press(KeyCode::Backspace));
+        assert_eq!(app.search_query, "a");
+    }
+
+    #[test]
+    fn test_handle_settings_mode() {
+        let mut app = App::with_sessions(vec![]);
+        app.open_settings();
+        let initial_len = app.settings_input.len();
+        handle_key_event(&mut app, press(KeyCode::Char('x')));
+        assert_eq!(app.settings_input.len(), initial_len + 1);
+        handle_key_event(&mut app, press(KeyCode::Esc));
+        assert!(!app.show_settings);
+    }
+
+    #[test]
+    fn test_handle_help_mode_scroll() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_help();
+        handle_key_event(&mut app, press(KeyCode::Down));
+        assert_eq!(app.help_scroll, 1);
+        handle_key_event(&mut app, press(KeyCode::PageDown));
+        assert_eq!(app.help_scroll, 11);
+    }
+
+    #[test]
+    fn test_handle_n_cancels_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.request_delete_confirmation();
+        handle_key_event(&mut app, press(KeyCode::Char('n')));
+        assert!(!app.is_confirmation_pending());
+    }
+
+    // --- Settings mode: Enter saves, Backspace deletes ---
+
+    #[test]
+    fn test_handle_settings_enter_saves() {
+        let mut app = App::with_sessions(vec![]);
+        app.open_settings();
+        app.settings_input = "/new/path".to_string();
+        handle_key_event(&mut app, press(KeyCode::Enter));
+        assert!(!app.show_settings);
+        assert_eq!(app.config.export_path, "/new/path");
+    }
+
+    #[test]
+    fn test_handle_settings_backspace() {
+        let mut app = App::with_sessions(vec![]);
+        app.open_settings();
+        let initial_len = app.settings_input.len();
+        handle_key_event(&mut app, press(KeyCode::Backspace));
+        assert_eq!(app.settings_input.len(), initial_len - 1);
+    }
+
+    // --- Help mode: PageUp ---
+
+    #[test]
+    fn test_handle_help_page_up() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_help();
+        app.help_scroll = 15;
+        handle_key_event(&mut app, press(KeyCode::PageUp));
+        assert_eq!(app.help_scroll, 5);
+    }
+
+    #[test]
+    fn test_handle_help_up_scrolls() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_help();
+        app.help_scroll = 5;
+        handle_key_event(&mut app, press(KeyCode::Up));
+        assert_eq!(app.help_scroll, 4);
+    }
+
+    #[test]
+    fn test_handle_help_esc_closes() {
+        let mut app = App::with_sessions(vec![]);
+        app.toggle_help();
+        handle_key_event(&mut app, press(KeyCode::Esc));
+        assert!(!app.show_help);
+    }
+
+    // --- Sort direction 'S' ---
+
+    #[test]
+    fn test_handle_shift_s_toggles_sort_direction() {
+        let mut app = App::with_sessions(vec![]);
+        assert_eq!(app.sort_direction, crate::app::SortDirection::Descending);
+        handle_key_event(&mut app, press(KeyCode::Char('S')));
+        assert_eq!(app.sort_direction, crate::app::SortDirection::Ascending);
+    }
+
+    // --- Left/Right focus ---
+
+    #[test]
+    fn test_handle_right_switches_to_preview() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        handle_key_event(&mut app, press(KeyCode::Right));
+        assert_eq!(app.focus, FocusPanel::Preview);
+    }
+
+    #[test]
+    fn test_handle_left_switches_to_list() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.focus = FocusPanel::Preview;
+        handle_key_event(&mut app, press(KeyCode::Left));
+        assert_eq!(app.focus, FocusPanel::List);
+    }
+
+    // --- PageDown/PageUp in list ---
+
+    #[test]
+    fn test_handle_pagedown_in_list() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+        ]);
+        handle_key_event(&mut app, press(KeyCode::PageDown));
+        assert_eq!(app.selected_session_idx, 2);
+    }
+
+    #[test]
+    fn test_handle_pageup_in_list() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+        ]);
+        app.selected_session_idx = 2;
+        handle_key_event(&mut app, press(KeyCode::PageUp));
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    // --- 'r' restore ---
+
+    #[test]
+    fn test_handle_r_restore_in_sessions_tab() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        handle_key_event(&mut app, press(KeyCode::Char('r')));
+        // restore in sessions tab shows error status
+        assert!(app.status_message.unwrap().contains("Trash tab"));
+    }
+
+    // --- 't' empty trash ---
+
+    #[test]
+    fn test_handle_t_requests_empty_trash() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        handle_key_event(&mut app, press(KeyCode::Char('t')));
+        assert_eq!(
+            app.confirm_action,
+            Some(crate::app::ConfirmAction::EmptyTrash)
+        );
+    }
+
+    #[test]
+    fn test_handle_t_confirms_when_pending() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        app.confirm_action = Some(crate::app::ConfirmAction::EmptyTrash);
+        handle_key_event(&mut app, press(KeyCode::Char('t')));
+        assert!(app.trash.is_empty());
+    }
+
+    // --- '0' trash zero messages ---
+
+    #[test]
+    fn test_handle_0_requests_trash_zero() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.sessions[0].messages.clear();
+        handle_key_event(&mut app, press(KeyCode::Char('0')));
+        assert_eq!(
+            app.confirm_action,
+            Some(crate::app::ConfirmAction::TrashZeroMessages)
+        );
+    }
+
+    // --- 'd' in confirm mode (DeleteToTrash) ---
+
+    #[test]
+    fn test_handle_d_first_press_requests_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        handle_key_event(&mut app, press(KeyCode::Char('d')));
+        assert!(app.is_confirmation_pending());
+    }
+
+    // --- 'y' confirms DeletePermanently ---
+
+    #[test]
+    fn test_handle_y_confirms_delete_permanently() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        app.confirm_action = Some(crate::app::ConfirmAction::DeletePermanently("t1".to_string()));
+        handle_key_event(&mut app, press(KeyCode::Char('y')));
+        assert!(app.trash.is_empty());
+        assert!(!app.is_confirmation_pending());
+    }
+
+    // --- Esc/Enter in search mode ---
+
+    #[test]
+    fn test_handle_esc_closes_search() {
+        let mut app = App::with_sessions(vec![]);
+        app.show_search = true;
+        app.search_query = "test".to_string();
+        handle_key_event(&mut app, press(KeyCode::Esc));
+        assert!(!app.show_search);
+    }
+
+    #[test]
+    fn test_handle_enter_closes_search() {
+        let mut app = App::with_sessions(vec![]);
+        app.show_search = true;
+        app.search_query = "test".to_string();
+        handle_key_event(&mut app, press(KeyCode::Enter));
+        assert!(!app.show_search);
+    }
+
+    // --- 'q' in search mode closes search instead of quitting ---
+
+    #[test]
+    fn test_handle_q_in_search_closes_search() {
+        let mut app = App::with_sessions(vec![]);
+        app.show_search = true;
+        let result = handle_key_event(&mut app, press(KeyCode::Char('q')));
+        assert!(result.is_none()); // should NOT quit
+        assert!(!app.show_search);
+    }
+
+    // --- Enter switches to session ---
+
+    #[test]
+    fn test_handle_enter_switches_session() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        handle_key_event(&mut app, press(KeyCode::Enter));
+        assert!(app.resume_session_id.is_some());
+    }
+
+    // --- 'e' export ---
+
+    #[test]
+    fn test_handle_e_export() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.config.export_path = tmp.path().to_string_lossy().to_string();
+        handle_key_event(&mut app, press(KeyCode::Char('e')));
+        assert!(app.status_message.unwrap().contains("Exported"));
+    }
 }

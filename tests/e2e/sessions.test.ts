@@ -241,3 +241,73 @@ test.describe("restore from trash", () => {
     await expect(terminal).toMatchSnapshot();
   });
 });
+
+// ─── Test 7: sort changes order ──────────────────────────────────────────────
+
+const env7 = createTempEnv();
+createFixtureSession(env7.claudeDir, "-zzz-project", "uuid-z", [
+  ["user", "one"],
+]);
+createFixtureSession(env7.claudeDir, "-aaa-project", "uuid-a", [
+  ["user", "one"],
+  ["user", "two"],
+  ["user", "three"],
+]);
+
+test.describe("sort changes order", () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env7.claudeDir,
+      AGENT_CONFIG_DIR: env7.configDir,
+    },
+    rows: 24,
+    columns: 80,
+  });
+
+  test("sort changes order", async ({ terminal }) => {
+    await expect(
+      terminal.getByText("Sessions", { strict: false })
+    ).toBeVisible();
+    await expect(terminal).toMatchSnapshot();
+    terminal.write("s"); // toggle sort to Project
+    await expect(
+      terminal.getByText("Sorted by", { strict: false })
+    ).toBeVisible();
+    await expect(terminal).toMatchSnapshot();
+  });
+});
+
+// ─── Test 8: help modal opens and closes ─────────────────────────────────────
+
+const env8 = createTempEnv();
+
+test.describe("help modal opens and closes", () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env8.claudeDir,
+      AGENT_CONFIG_DIR: env8.configDir,
+    },
+    rows: 24,
+    columns: 80,
+  });
+
+  test("help modal opens and closes", async ({ terminal }) => {
+    await expect(
+      terminal.getByText("Sessions", { strict: false })
+    ).toBeVisible();
+    terminal.write("h");
+    await expect(
+      terminal.getByText("Help", { strict: false })
+    ).toBeVisible();
+    await expect(terminal).toMatchSnapshot();
+    terminal.write("h"); // close
+    await expect(
+      terminal.getByText("Sessions", { strict: false })
+    ).toBeVisible();
+    await expect(terminal).toMatchSnapshot();
+  });
+});

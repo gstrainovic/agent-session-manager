@@ -946,4 +946,288 @@ mod tests {
         terminal.draw(|f| draw(f, &app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
+
+    // --- format_size ---
+
+    #[test]
+    fn test_format_size_bytes() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(1023), "1023 B");
+    }
+
+    #[test]
+    fn test_format_size_kilobytes() {
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(1536), "1.5 KB");
+    }
+
+    #[test]
+    fn test_format_size_megabytes() {
+        assert_eq!(format_size(1024 * 1024), "1.0 MB");
+        assert_eq!(format_size(2 * 1024 * 1024 + 512 * 1024), "2.5 MB");
+    }
+
+    // --- format_datetime ---
+
+    #[test]
+    fn test_format_datetime_iso() {
+        assert_eq!(format_datetime("2026-01-15T10:30:00+01:00"), "2026-01-15 10:30");
+    }
+
+    #[test]
+    fn test_format_datetime_short_string() {
+        assert_eq!(format_datetime("short"), "short");
+    }
+
+    // --- parse_markdown_line ---
+
+    #[test]
+    fn test_parse_markdown_h1() {
+        let line = parse_markdown_line("# Title");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "Title");
+    }
+
+    #[test]
+    fn test_parse_markdown_bullet() {
+        let line = parse_markdown_line("- Item text");
+        assert_eq!(line.spans[0].content.as_ref(), "• ");
+    }
+
+    // --- parse_inline_formatting ---
+
+    #[test]
+    fn test_parse_inline_code() {
+        let spans = parse_inline_formatting("use `cargo test`".to_string(), Style::default());
+        assert!(spans.iter().any(|s| s.content.as_ref() == "cargo test"));
+    }
+
+    #[test]
+    fn test_parse_inline_bold() {
+        let spans =
+            parse_inline_formatting("this is **bold** text".to_string(), Style::default());
+        assert!(spans.iter().any(|s| s.content.as_ref() == "bold"));
+    }
+
+    #[test]
+    fn test_parse_inline_link() {
+        let spans = parse_inline_formatting(
+            "see [docs](http://example.com)".to_string(),
+            Style::default(),
+        );
+        assert!(spans.iter().any(|s| s.content.as_ref() == "docs"));
+    }
+
+    // --- draw_loading ---
+
+    #[test]
+    fn test_snapshot_loading_progress() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_loading(f, 42, 100)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
+
+    // --- parse_markdown_line: H2, H3, code blocks, tables, nested lists ---
+
+    #[test]
+    fn test_parse_markdown_h2() {
+        let line = parse_markdown_line("## Subtitle");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "Subtitle");
+    }
+
+    #[test]
+    fn test_parse_markdown_h3() {
+        let line = parse_markdown_line("### Section");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "Section");
+    }
+
+    #[test]
+    fn test_parse_markdown_code_block() {
+        let line = parse_markdown_line("```rust");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "```rust");
+    }
+
+    #[test]
+    fn test_parse_markdown_table_line() {
+        let line = parse_markdown_line("| Key | Action |");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "| Key | Action |");
+    }
+
+    #[test]
+    fn test_parse_markdown_table_separator() {
+        let line = parse_markdown_line("|---|---|");
+        assert_eq!(line.spans.len(), 1);
+        assert_eq!(line.spans[0].content.as_ref(), "|---|---|");
+    }
+
+    #[test]
+    fn test_parse_markdown_nested_bullet() {
+        let line = parse_markdown_line("  - Nested item");
+        assert_eq!(line.spans[0].content.as_ref(), "  ◦ ");
+    }
+
+    #[test]
+    fn test_parse_markdown_asterisk_bullet() {
+        let line = parse_markdown_line("* Asterisk item");
+        assert_eq!(line.spans[0].content.as_ref(), "• ");
+    }
+
+    #[test]
+    fn test_parse_markdown_nested_asterisk() {
+        let line = parse_markdown_line("  * Nested asterisk");
+        assert_eq!(line.spans[0].content.as_ref(), "  ◦ ");
+    }
+
+    #[test]
+    fn test_parse_markdown_plain_text() {
+        let line = parse_markdown_line("Just plain text");
+        assert!(line.spans.iter().any(|s| s.content.as_ref() == "Just plain text"));
+    }
+
+    // --- parse_inline_formatting: edge cases ---
+
+    #[test]
+    fn test_parse_inline_unclosed_backtick() {
+        let spans = parse_inline_formatting("use `unclosed code".to_string(), Style::default());
+        // Should not panic; unclosed backtick produces a span with content up to end
+        assert!(!spans.is_empty());
+        assert!(spans.iter().any(|s| s.content.as_ref() == "unclosed code"));
+    }
+
+    #[test]
+    fn test_parse_inline_unclosed_bold() {
+        let spans =
+            parse_inline_formatting("this is **unclosed bold".to_string(), Style::default());
+        assert!(!spans.is_empty());
+    }
+
+    #[test]
+    fn test_parse_inline_unclosed_link() {
+        let spans =
+            parse_inline_formatting("see [broken link".to_string(), Style::default());
+        assert!(!spans.is_empty());
+        // Should include the bracket as plain text
+        assert!(spans
+            .iter()
+            .any(|s| s.content.as_ref().contains("[") || s.content.as_ref().contains("broken")));
+    }
+
+    #[test]
+    fn test_parse_inline_link_without_url() {
+        let spans =
+            parse_inline_formatting("see [text] no url".to_string(), Style::default());
+        assert!(!spans.is_empty());
+        // [text] without (url) should be treated as plain text
+        assert!(spans.iter().any(|s| s.content.as_ref().contains("text")));
+    }
+
+    #[test]
+    fn test_parse_inline_underscore_bold() {
+        let spans =
+            parse_inline_formatting("this is __bold__ text".to_string(), Style::default());
+        assert!(spans.iter().any(|s| s.content.as_ref() == "bold"));
+    }
+
+    #[test]
+    fn test_parse_inline_single_asterisk_not_bold() {
+        let spans =
+            parse_inline_formatting("a * b * c".to_string(), Style::default());
+        // Single asterisks should be kept as plain text
+        assert!(spans.iter().any(|s| s.content.as_ref().contains("*")));
+    }
+
+    #[test]
+    fn test_parse_inline_empty_string() {
+        let spans = parse_inline_formatting(String::new(), Style::default());
+        assert!(spans.is_empty());
+    }
+
+    // --- draw_loading edge case ---
+
+    #[test]
+    fn test_draw_loading_zero_total() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw_loading(f, 0, 0)).unwrap();
+        // Should not panic with total=0
+        let output = terminal.backend().to_string();
+        assert!(output.contains("0/0"));
+    }
+
+    // --- sanitize_for_display: additional ranges ---
+
+    #[test]
+    fn test_sanitize_replaces_emoji() {
+        let input = "Hello \u{1F600} World"; // 😀
+        let result = sanitize_for_display(input);
+        assert!(!result.contains('\u{1F600}'));
+        assert!(result.contains("Hello"));
+        assert!(result.contains("World"));
+    }
+
+    #[test]
+    fn test_sanitize_replaces_supplemental_symbols() {
+        let input = "Test \u{1FA80} end"; // 🪀
+        let result = sanitize_for_display(input);
+        assert!(!result.contains('\u{1FA80}'));
+    }
+
+    // --- format_datetime edge cases ---
+
+    #[test]
+    fn test_format_datetime_empty_string() {
+        assert_eq!(format_datetime(""), "");
+    }
+
+    #[test]
+    fn test_format_datetime_exact_16_chars() {
+        assert_eq!(format_datetime("2026-01-15T10:30"), "2026-01-15 10:30");
+    }
+
+    // --- Snapshot: Trash tab render ---
+
+    #[test]
+    fn test_snapshot_trash_tab() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session(
+            "trash-session",
+            "deleted-project",
+            vec![make_msg("user", "old message")],
+        )];
+        app.current_tab = crate::app::Tab::Trash;
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
+
+    // --- Snapshot: Search modal with results ---
+
+    #[test]
+    fn test_snapshot_search_with_filter() {
+        let mut app = App::with_sessions(vec![
+            make_session(
+                "abc12345",
+                "alpha-project",
+                vec![make_msg("user", "alpha content")],
+            ),
+            make_session(
+                "def67890",
+                "beta-project",
+                vec![make_msg("user", "beta content")],
+            ),
+        ]);
+        app.show_search = true;
+        app.search_query = "alpha".to_string();
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
 }
