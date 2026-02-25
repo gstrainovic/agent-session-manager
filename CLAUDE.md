@@ -88,24 +88,27 @@ cargo test  # alle Unit-Tests
 cargo test --test integration
 ```
 
-### Layer 3 — E2E PTY-Tests (`tests/e2e.rs`)
+### Layer 3 — E2E TUI-Tests (`tests/e2e/`)
 
-6 Tests starten die echte Binary in einem PTY (via `ratatui-testlib` + `portable-pty`) und senden Tastatureingaben:
-- E2E-Flows: Session-Anzeige, Suche, Settings, Export, Delete/Trash, Restore
+6 TypeScript-Tests mit `@microsoft/tui-test` (Microsoft). Starten die echte Binary
+und interagieren per Tastatureingabe. Nutzt xterm.js als Terminal-Emulator statt
+ConPTY-Pipes — funktioniert plattformübergreifend (Windows/Linux/macOS).
 
-**Plattform:** Nur Linux/macOS (`#![cfg(not(windows))]`).
-Windows-Einschränkung: `portable-pty`'s ConPTY-Reader blockiert dauerhaft (keine `WouldBlock`-Semantik), daher hängen die Tests auf Windows.
+**Plattform:** Windows, Linux, macOS.
 
 ```bash
-cargo build && cargo test --test e2e  # nur Linux/macOS
+cd tests/e2e && npm test            # E2E-Tests ausführen
+cd tests/e2e && npm run test:trace  # mit Trace-Aufzeichnung
 ```
+
+**Voraussetzung:** `cargo build` muss vorher gelaufen sein (Binary in `target/debug/`).
 
 ### Test-Ausführung
 
 ```bash
-cargo test          # alle Tests (Layer 1 + 2; Layer 3 auf Linux/macOS)
+cargo test                      # alle Tests (Layer 1 + 2)
 cargo test --test integration   # nur Layer 2
-cargo test --test e2e           # nur Layer 3 (Linux/macOS)
+cd tests/e2e && npm test        # nur Layer 3 (E2E)
 ```
 
 Tests verwenden `tempfile` für isolierte Testdaten.

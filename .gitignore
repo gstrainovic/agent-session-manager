@@ -1,3 +1,7 @@
 /target
 .serena/
 .aider*
+tests/e2e/node_modules/
+tests/e2e/.tui-test/cache/
+tests/e2e/tui-traces/
+tests/e2e/__snapshots__/
