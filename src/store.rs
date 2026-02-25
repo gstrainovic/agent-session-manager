@@ -64,7 +64,7 @@ impl SessionStore {
         }
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)] // Used in integration tests (tests/integration.rs)
     pub fn load_sessions(&self) -> Result<Vec<Session>> {
         let mut sessions = Vec::new();
 

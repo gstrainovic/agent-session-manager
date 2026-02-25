@@ -1,11 +1,17 @@
 #![allow(dead_code)]
 
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 use tempfile::TempDir;
 
+/// Globaler Mutex verhindert parallele Env-Var-Konflikte zwischen Tests.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Isolierte Testumgebung mit eigenen Verzeichnissen für Sessions, Config und Exports.
-/// Env-Vars werden via `activate()` gesetzt und via `deactivate()` entfernt.
+/// Hält einen globalen Mutex für die Laufzeit der Testumgebung, damit keine zwei Tests
+/// gleichzeitig `CLAUDE_DATA_DIR` / `AGENT_CONFIG_DIR` ändern können.
 pub struct TestEnv {
+    _lock: MutexGuard<'static, ()>,
     pub _tmp: TempDir,
     pub claude_dir: std::path::PathBuf,
     pub config_dir: std::path::PathBuf,
@@ -14,6 +20,7 @@ pub struct TestEnv {
 
 impl TestEnv {
     pub fn new() -> Self {
+        let lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().expect("TempDir");
         let claude_dir = tmp.path().join("claude");
         let config_dir = tmp.path().join("config");
@@ -22,6 +29,7 @@ impl TestEnv {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(&export_dir).unwrap();
         Self {
+            _lock: lock,
             _tmp: tmp,
             claude_dir,
             config_dir,
@@ -40,7 +48,7 @@ impl TestEnv {
     }
 }
 
-/// Erzeugt eine JSONL-Session-Datei in `<claude_dir>/projects/<project_slug>/sessions/<session_id>.jsonl`.
+/// Erzeugt eine JSONL-Session-Datei in `<claude_dir>/projects/<project_slug>/<session_id>.jsonl`.
 pub fn create_fixture_session(
     claude_dir: &Path,
     project_slug: &str,
@@ -49,8 +57,7 @@ pub fn create_fixture_session(
 ) {
     let sessions_dir = claude_dir
         .join("projects")
-        .join(project_slug)
-        .join("sessions");
+        .join(project_slug);
     std::fs::create_dir_all(&sessions_dir).unwrap();
 
     let mut lines = Vec::new();
