@@ -59,7 +59,7 @@ agent-session-manager
 | Key | Function |
 |-----|----------|
 | `↑` / `↓` | Select session (list) / scroll preview (line by line) |
-| `←` | Switch / `→` focus between list and preview |
+| `←` / `→` | Switch focus between list and preview |
 | `Enter` | Switch to selected session |
 | `Tab` | Switch between Sessions/Trash |
 | `Ctrl+F` | Open search |

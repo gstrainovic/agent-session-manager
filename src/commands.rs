@@ -2,6 +2,7 @@ use crate::models::Session;
 use anyhow::Result;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 
 pub fn delete_session(_session: &Session) -> Result<()> {
     let trash_dir = dirs::home_dir().expect("home dir").join(".claude/trash");
@@ -9,16 +10,15 @@ pub fn delete_session(_session: &Session) -> Result<()> {
     Ok(())
 }
 
-pub fn export_session(session: &Session) -> Result<String> {
-    let export_dir = dirs::home_dir().expect("home dir").join("claude-exports");
-    fs::create_dir_all(&export_dir)?;
+pub fn export_session(session: &Session, export_dir: &Path) -> Result<String> {
+    fs::create_dir_all(export_dir)?;
 
     let filename = format!(
         "{}-{}.md",
         session.project_name,
         &session.id[..8.min(session.id.len())]
     );
-    let path = export_dir.join(&filename);
+    let path = export_dir.join(filename);
 
     let mut file = fs::File::create(&path)?;
 
@@ -84,8 +84,10 @@ mod tests {
 
     #[test]
     fn test_export_session_creates_markdown() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
         let session = make_test_session();
-        let result = export_session(&session);
+        let result = export_session(&session, tmp.path());
         assert!(result.is_ok());
         let path = result.unwrap();
         assert!(path.contains("test-project-abc12345"));
@@ -97,7 +99,5 @@ mod tests {
         assert!(content.contains("Hi there"));
         assert!(content.contains("## You"));
         assert!(content.contains("## Assistant"));
-
-        fs::remove_file(&path).ok();
     }
 }

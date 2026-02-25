@@ -1,3 +1,4 @@
+use crate::config::AppConfig;
 use crate::models::Session;
 use crate::store::SessionStore;
 use std::time::Instant;
@@ -53,6 +54,9 @@ pub struct App {
     pub sort_direction: SortDirection,
     pub show_help: bool,
     pub help_scroll: u16,
+    pub show_settings: bool,
+    pub settings_input: String,
+    pub config: AppConfig,
 }
 
 impl App {
@@ -75,6 +79,9 @@ impl App {
             sort_direction: SortDirection::Descending,
             show_help: false,
             help_scroll: 0,
+            show_settings: false,
+            settings_input: String::new(),
+            config: AppConfig::load(),
         }
     }
 
@@ -98,6 +105,9 @@ impl App {
             sort_direction: SortDirection::Descending,
             show_help: false,
             help_scroll: 0,
+            show_settings: false,
+            settings_input: String::new(),
+            config: AppConfig::default(),
         }
     }
 
@@ -499,6 +509,30 @@ impl App {
         self.selected_session_idx = 0;
     }
 
+    pub fn open_settings(&mut self) {
+        self.settings_input = self.config.export_path.clone();
+        self.show_settings = true;
+    }
+
+    pub fn save_settings(&mut self) {
+        self.config.export_path = self.settings_input.clone();
+        let _ = self.config.save();
+        self.show_settings = false;
+        self.set_status(format!("Settings saved: {}", self.settings_input));
+    }
+
+    pub fn cancel_settings(&mut self) {
+        self.show_settings = false;
+    }
+
+    pub fn settings_add_char(&mut self, c: char) {
+        self.settings_input.push(c);
+    }
+
+    pub fn settings_pop_char(&mut self) {
+        self.settings_input.pop();
+    }
+
     pub fn set_status(&mut self, message: String) {
         self.status_message = Some(message);
         self.status_message_time = Some(Instant::now());
@@ -816,6 +850,48 @@ mod tests {
 
         assert_eq!(app.confirm_action, None);
         assert!(app.status_message.unwrap().contains("No empty sessions"));
+    }
+
+    #[test]
+    fn test_open_settings_copies_export_path_to_input() {
+        let mut app = App::with_sessions(vec![]);
+        app.config.export_path = "~/my-exports".to_string();
+        app.open_settings();
+        assert!(app.show_settings);
+        assert_eq!(app.settings_input, "~/my-exports");
+    }
+
+    #[test]
+    fn test_save_settings_updates_config_and_closes_modal() {
+        let mut app = App::with_sessions(vec![]);
+        app.open_settings();
+        app.settings_input = "/new/path".to_string();
+        app.save_settings();
+        assert!(!app.show_settings);
+        assert_eq!(app.config.export_path, "/new/path");
+    }
+
+    #[test]
+    fn test_cancel_settings_closes_modal_without_saving() {
+        let mut app = App::with_sessions(vec![]);
+        app.config.export_path = "~/original".to_string();
+        app.open_settings();
+        app.settings_input = "~/changed".to_string();
+        app.cancel_settings();
+        assert!(!app.show_settings);
+        assert_eq!(app.config.export_path, "~/original");
+    }
+
+    #[test]
+    fn test_settings_add_and_pop_char() {
+        let mut app = App::with_sessions(vec![]);
+        app.open_settings();
+        app.settings_add_char('/');
+        app.settings_add_char('f');
+        app.settings_add_char('o');
+        assert_eq!(app.settings_input, "~/claude-exports/fo");
+        app.settings_pop_char();
+        assert_eq!(app.settings_input, "~/claude-exports/f");
     }
 
     #[test]

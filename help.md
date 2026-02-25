@@ -34,6 +34,6 @@ A terminal-based session manager for Claude Code sessions.
 - **Session Export**: Export sessions as Markdown files
 - **Trash System**: Safely delete and restore sessions
 - **Parallel Loading**: Fast loading of large session sets with multi-threading
-- **TUI Interface**: Intuitive terminal interface with 
+- **TUI Interface**: Intuitive terminal interface with [ratatui](https://github.com/ratatui/ratatui)
 
 Created 2026 by Goran Strainovic

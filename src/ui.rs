@@ -76,6 +76,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     if app.show_help {
         draw_help_modal(f, app);
     }
+
+    if app.show_settings {
+        draw_settings_modal(f, app);
+    }
 }
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
@@ -366,6 +370,8 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
                     Span::raw(" focus  "),
                     Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
                     Span::raw(" search  "),
+                    Span::styled("[g]", Style::default().fg(Color::Magenta)),
+                    Span::raw("settings  "),
                     Span::styled("[h]", Style::default().fg(Color::DarkGray)),
                     Span::raw("elp  "),
                     Span::styled("[q]", Style::default().fg(Color::DarkGray)),
@@ -621,6 +627,52 @@ fn parse_inline_formatting(text: String, base_style: Style) -> Vec<Span<'static>
     }
 
     spans
+}
+
+fn draw_settings_modal(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let width = (area.width as f32 * 0.6) as u16;
+    let height = 7u16;
+
+    let popup_area = Rect {
+        x: (area.width.saturating_sub(width)) / 2,
+        y: (area.height.saturating_sub(height)) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::default()
+        .title(" Settings ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta));
+
+    let inner = block.inner(popup_area);
+
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Export Path: ", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                format!("  {}_", app.settings_input),
+                Style::default().fg(Color::White),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  [Enter]", Style::default().fg(Color::Green)),
+            Span::raw(" save  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Red)),
+            Span::raw(" cancel"),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(text);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(block, popup_area);
+    f.render_widget(paragraph, inner);
 }
 
 #[cfg(test)]

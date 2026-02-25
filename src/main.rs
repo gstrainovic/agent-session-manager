@@ -1,5 +1,6 @@
 mod app;
 mod commands;
+mod config;
 mod models;
 mod store;
 mod ui;
@@ -127,6 +128,17 @@ fn handle_key_event(
     app: &mut App,
     key: event::KeyEvent,
 ) -> Option<io::Result<Option<(String, Option<String>)>>> {
+    if app.show_settings {
+        match key.code {
+            KeyCode::Enter => app.save_settings(),
+            KeyCode::Esc => app.cancel_settings(),
+            KeyCode::Char(c) => app.settings_add_char(c),
+            KeyCode::Backspace => app.settings_pop_char(),
+            _ => {}
+        }
+        return None;
+    }
+
     if app.show_help {
         match key.code {
             KeyCode::Char('h') | KeyCode::Esc => app.toggle_help(),
@@ -249,7 +261,9 @@ fn handle_key_event(
         }
         KeyCode::Char('e') if !app.show_search => {
             if let Some(session) = app.get_selected_session() {
-                match commands::export_session(session) {
+                let export_dir = app.config.resolved_export_path();
+                let session_clone = session.clone();
+                match commands::export_session(&session_clone, &export_dir) {
                     Ok(path) => {
                         app.set_status(format!("Exported to {}", path));
                     }
@@ -258,6 +272,9 @@ fn handle_key_event(
                     }
                 }
             }
+        }
+        KeyCode::Char('g') if !app.show_search => {
+            app.open_settings();
         }
         KeyCode::Char('s') if !app.show_search => {
             app.toggle_sort();
