@@ -51,7 +51,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             [
                 Constraint::Length(3),
                 Constraint::Min(10),
-                Constraint::Length(3),
+                Constraint::Length(4),
             ]
             .as_ref(),
         )
@@ -353,64 +353,72 @@ fn draw_search_modal(f: &mut Frame, app: &App) {
 }
 
 fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
-    let commands_text = if let Some(ref msg) = app.status_message {
-        Line::from(vec![Span::styled(msg, Style::default().fg(Color::Green))])
-    } else {
-        let cmds = match app.current_tab {
-            Tab::Sessions => {
-                vec![
-                    Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" resume  "),
-                    Span::styled("[d]", Style::default().fg(Color::Red)),
-                    Span::raw("elete  "),
-                    Span::styled("[e]", Style::default().fg(Color::Yellow)),
-                    Span::raw("xport  "),
-                    Span::styled("[s]", Style::default().fg(Color::Magenta)),
-                    Span::raw(" sort  "),
-                    Span::styled("[S]", Style::default().fg(Color::Magenta)),
-                    Span::raw(" dir  "),
-                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" focus  "),
-                    Span::styled("[Ctrl+F]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" search  "),
-                    Span::styled("[g]", Style::default().fg(Color::Magenta)),
-                    Span::raw("settings  "),
-                    Span::styled("[h]", Style::default().fg(Color::DarkGray)),
-                    Span::raw("elp  "),
-                    Span::styled("[q]", Style::default().fg(Color::DarkGray)),
-                    Span::raw("uit"),
-                ]
-            }
-            Tab::Trash => {
-                vec![
-                    Span::styled("[r]", Style::default().fg(Color::Green)),
-                    Span::raw("estore  "),
-                    Span::styled("[d]", Style::default().fg(Color::Red)),
-                    Span::raw("elete  "),
-                    Span::styled("[t]", Style::default().fg(Color::Red)),
-                    Span::raw(" empty  "),
-                    Span::styled("[s]", Style::default().fg(Color::Magenta)),
-                    Span::raw(" sort  "),
-                    Span::styled("[S]", Style::default().fg(Color::Magenta)),
-                    Span::raw(" dir  "),
-                    Span::styled("[←/→]", Style::default().fg(Color::Cyan)),
-                    Span::raw(" focus  "),
-                    Span::styled("[h]", Style::default().fg(Color::DarkGray)),
-                    Span::raw("elp  "),
-                    Span::styled("[q]", Style::default().fg(Color::DarkGray)),
-                    Span::raw("uit"),
-                ]
-            }
-        };
-        Line::from(cmds)
+    let sep = Span::styled("│", Style::default().fg(Color::DarkGray));
+
+    // Status-Nachricht: volle Breite, 1 Zeile
+    if let Some(ref msg) = app.status_message {
+        let bar = Paragraph::new(Line::from(vec![
+            Span::styled(msg.as_str(), Style::default().fg(Color::Green)),
+        ]))
+        .block(Block::default().borders(Borders::TOP).border_style(
+            Style::default().fg(Color::DarkGray),
+        ));
+        f.render_widget(bar, area);
+        return;
+    }
+
+    let c = |s: &'static str, color: Color| Span::styled(s, Style::default().fg(color));
+    let w = |s: &'static str| Span::raw(s);
+
+    let (line1, line2) = match app.current_tab {
+        Tab::Sessions => (
+            Line::from(vec![
+                c("↑↓", Color::Cyan), w(" nav  "),
+                c("←→", Color::Cyan), w(" focus  "),
+                sep.clone(), w("  "),
+                c("[Enter]", Color::Cyan), w(" resume  "),
+                c("[d]", Color::Red), w("elete  "),
+                c("[e]", Color::Yellow), w("xport  "),
+                c("[0]", Color::Red), w(" clean  "),
+            ]),
+            Line::from(vec![
+                w("                   "),
+                sep.clone(), w("  "),
+                c("[s]", Color::Magenta), w(" sort  "),
+                c("[S]", Color::Magenta), w(" dir  "),
+                c("[Ctrl+F]", Color::Cyan), w(" search  "),
+                c("[g]", Color::Magenta), w(" settings  "),
+                c("[h]", Color::DarkGray), w("elp  "),
+                c("[q]", Color::DarkGray), w("uit"),
+            ]),
+        ),
+        Tab::Trash => (
+            Line::from(vec![
+                c("↑↓", Color::Cyan), w(" nav  "),
+                c("←→", Color::Cyan), w(" focus  "),
+                sep.clone(), w("  "),
+                c("[r]", Color::Green), w("estore  "),
+                c("[d]", Color::Red), w("elete  "),
+                c("[t]", Color::Red), w(" empty trash  "),
+            ]),
+            Line::from(vec![
+                w("                   "),
+                sep.clone(), w("  "),
+                c("[s]", Color::Magenta), w(" sort  "),
+                c("[S]", Color::Magenta), w(" dir  "),
+                c("[g]", Color::Magenta), w(" settings  "),
+                c("[h]", Color::DarkGray), w("elp  "),
+                c("[q]", Color::DarkGray), w("uit"),
+            ]),
+        ),
     };
 
-    let bar = Paragraph::new(commands_text).block(
+    let text = ratatui::text::Text::from(vec![line1, line2]);
+    let bar = Paragraph::new(text).block(
         Block::default()
             .borders(Borders::TOP)
             .border_style(Style::default().fg(Color::DarkGray)),
     );
-
     f.render_widget(bar, area);
 }
 
