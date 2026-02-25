@@ -12,7 +12,8 @@ A terminal-based session manager for Claude Code sessions.
 - **Sortable Columns**: Sort by project name, message count, or date
 - **Search**: Find sessions quickly with `Ctrl+F`
 - **Message Preview**: Show conversation content with scrollable preview
-- **Session Export**: Export sessions as Markdown files
+- **Session Export**: Export sessions as Markdown files to a configurable path
+- **Settings**: Configure export path via `g`, persisted across sessions
 - **Trash System**: Safely delete and restore sessions
 - **Parallel Loading**: Fast loading of large session sets with multi-threading
 - **TUI Interface**: Intuitive terminal interface with [ratatui](https://github.com/ratatui/ratatui)
@@ -71,6 +72,7 @@ agent-session-manager
 | `r` | Restore session from Trash |
 | `t` | Empty trash (in Trash tab) |
 | `e` | Export session as Markdown |
+| `g` | Open settings (configure export path) |
 | `0` | Move all sessions with 0 messages to trash |
 | `PgUp` / `PgDn` | Page scroll (depending on focus) |
 | `h` | Show help (README) |
@@ -115,11 +117,16 @@ Sessions are read from the Claude Code session directory:
 ~/.claude/projects/<project-hash>/sessions/
 ```
 
-Exported sessions go to:
+Exported sessions go to the configured export path (default):
 
 ```
 ~/claude-exports/
 ```
+
+The export path can be changed via `g` → Settings modal. The configuration is saved to:
+
+- **Linux/macOS**: `~/.config/agent-session-manager/config.json`
+- **Windows**: `%APPDATA%\agent-session-manager\config.json`
 
 Trash directory:
 
