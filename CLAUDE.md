@@ -56,13 +56,57 @@ Parser filtert nur `type: "user"` und `type: "assistant"`, ignoriert `file-histo
 
 ## Testing
 
+### Layer 1 — Unit- & Snapshot-Tests (in `src/`)
+
 Alle Module haben umfangreiche Unit-Tests:
 - `models::tests`: Session-Creation, Display-Names, JSONL-Parsing
-- `store::tests`: Session-Loading, Filtering
+- `store::tests`: Session-Loading, Filtering, Env-Var-Isolation
 - `commands::tests`: Export-Funktionalität
-- `config::tests`: Save/Load Roundtrip, Pfad-Auflösung (Tilde-Expansion)
+- `config::tests`: Save/Load Roundtrip, Pfad-Auflösung (Tilde-Expansion), Env-Var-Isolation
 - `app::tests`: State-Transitions, Settings-Modal (open/save/cancel)
 - `ui::tests`: Render-Snapshots mit `ratatui::TestBackend` + `insta`
+
+```bash
+cargo test  # alle Unit-Tests
+```
+
+### Layer 2 — Integration Tests (`tests/integration.rs`)
+
+9 Tests die App-Methoden und Store direkt aufrufen (ohne Binary zu starten):
+- Read: Sessions aus Fixture laden, Suche filtert korrekt
+- Settings: Speichern → config.json, Cancel → keine Änderung
+- Export: Datei landet im konfigurierten Pfad
+- Trash/Restore/EmptyTrash: CRUD-Flows
+
+**Isolation:** Zwei Env-Vars entkoppeln von Produktivdaten:
+- `CLAUDE_DATA_DIR` → überschreibt `~/.claude` in `SessionStore::new()`
+- `AGENT_CONFIG_DIR` → überschreibt Platform-Config-Dir in `AppConfig::config_path()`
+
+`tests/common/mod.rs` enthält `TestEnv`-Struct mit globalem `Mutex<()>` für serielle Ausführung (verhindert Race-Conditions bei Env-Var-Zugriff).
+
+```bash
+cargo test --test integration
+```
+
+### Layer 3 — E2E PTY-Tests (`tests/e2e.rs`)
+
+6 Tests starten die echte Binary in einem PTY (via `ratatui-testlib` + `portable-pty`) und senden Tastatureingaben:
+- E2E-Flows: Session-Anzeige, Suche, Settings, Export, Delete/Trash, Restore
+
+**Plattform:** Nur Linux/macOS (`#![cfg(not(windows))]`).
+Windows-Einschränkung: `portable-pty`'s ConPTY-Reader blockiert dauerhaft (keine `WouldBlock`-Semantik), daher hängen die Tests auf Windows.
+
+```bash
+cargo build && cargo test --test e2e  # nur Linux/macOS
+```
+
+### Test-Ausführung
+
+```bash
+cargo test          # alle Tests (Layer 1 + 2; Layer 3 auf Linux/macOS)
+cargo test --test integration   # nur Layer 2
+cargo test --test e2e           # nur Layer 3 (Linux/macOS)
+```
 
 Tests verwenden `tempfile` für isolierte Testdaten.
 
@@ -88,64 +132,6 @@ Event-Loop in `main.rs` delegiert zu App-Methoden:
 | `h` | Help-Modal |
 | `Ctrl+F` | Suche |
 
-## E2E UI-Test Konzept
-
-### Ansatz: Integration Tests via `handle_key_event` + `TestBackend`
-
-Keine echte PTY nötig — stattdessen Flows direkt in Rust testen:
-
-```rust
-// tests/integration_test.rs (Beispiel-Struktur)
-fn simulate_keys(app: &mut App, keys: &[KeyCode]) {
-    for code in keys {
-        let event = KeyEvent::new(*code, KeyModifiers::NONE);
-        handle_key_event(app, event);
-    }
-}
-
-#[test]
-fn test_settings_flow_saves_config() {
-    let mut app = App::with_sessions(vec![]);
-    // g öffnet Settings
-    simulate_keys(&mut app, &[KeyCode::Char('g')]);
-    assert!(app.show_settings);
-    // Backspace x15 + neuen Pfad tippen
-    for _ in 0..15 { app.settings_pop_char(); }
-    for c in "/tmp/exports".chars() { app.settings_add_char(c); }
-    // Enter speichert
-    simulate_keys(&mut app, &[KeyCode::Enter]);
-    assert!(!app.show_settings);
-    assert_eq!(app.config.export_path, "/tmp/exports");
-}
-
-#[test]
-fn test_settings_modal_renders() {
-    let mut app = App::with_sessions(vec![]);
-    app.open_settings();
-    let output = render_to_string(&app, 100, 20);
-    assert!(output.contains("Settings"));
-    assert!(output.contains("Export Path"));
-    assert!(output.contains("[Enter] save"));
-}
-```
-
-### Was getestet werden sollte
-
-| Flow | Typ |
-|------|-----|
-| Settings öffnen → Pfad ändern → speichern → Config-Datei prüfen | Integration |
-| Settings öffnen → Esc → Config unverändert | Integration |
-| Export → Datei landet in `config.export_path` | Integration |
-| Settings-Modal rendert korrekt (`insta` Snapshot) | UI Snapshot |
-| Help-Modal rendert korrekt (`insta` Snapshot) | UI Snapshot |
-| Delete-Confirm rendert korrekt | UI Snapshot |
-
-### Fehlende Tests (TODO)
-
-- `ui::tests`: Snapshot für Settings-Modal-State
-- `ui::tests`: Snapshot für Help-Modal-State
-- `commands::tests`: Export mit benutzerdefiniertem Pfad (nicht default)
-- Integration: vollständiger Settings-Änderungs-Flow inkl. Datei-Prüfung
 
 ## Bekannte Einschränkungen
 
