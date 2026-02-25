@@ -42,10 +42,13 @@ pub struct SessionStore {
 
 impl SessionStore {
     pub fn new() -> Self {
-        let home = dirs::home_dir().expect("home dir");
-        let projects_path = home.join(".claude/projects");
-        let trash_path = home.join(".claude/trash.json");
-
+        let base = if let Ok(dir) = std::env::var("CLAUDE_DATA_DIR") {
+            PathBuf::from(dir)
+        } else {
+            dirs::home_dir().expect("home dir").join(".claude")
+        };
+        let projects_path = base.join("projects");
+        let trash_path = base.join("trash.json");
         Self {
             projects_path,
             trash_path,
@@ -501,5 +504,14 @@ mod tests {
         assert_eq!(sessions_after_restore.len(), 1);
         assert_eq!(sessions_after_restore[0].id, "test-session");
         assert_eq!(sessions_after_restore[0].messages.len(), 2);
+    }
+
+    #[test]
+    fn test_new_uses_env_var_claude_data_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_var("CLAUDE_DATA_DIR", tmp.path());
+        let store = SessionStore::new();
+        assert_eq!(store.projects_path, tmp.path().join("projects"));
+        std::env::remove_var("CLAUDE_DATA_DIR");
     }
 }
