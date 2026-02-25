@@ -693,7 +693,6 @@ mod tests {
             size: 1024,
             total_entries: messages.len() + 3,
             messages,
-            original_content: None,
         }
     }
 

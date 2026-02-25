@@ -566,7 +566,6 @@ mod tests {
                 role: "user".to_string(),
                 content: format!("msg in {}", id),
             }],
-            original_content: None,
         }
     }
 

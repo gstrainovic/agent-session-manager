@@ -332,7 +332,6 @@ mod tests {
                 role: "user".to_string(),
                 content: "msg".to_string(),
             }],
-            original_content: None,
         }
     }
 

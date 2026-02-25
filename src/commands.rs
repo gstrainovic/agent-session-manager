@@ -71,7 +71,6 @@ mod tests {
                     content: "Hi there".to_string(),
                 },
             ],
-            original_content: None,
         }
     }
 

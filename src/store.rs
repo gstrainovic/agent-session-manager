@@ -235,7 +235,6 @@ impl SessionStore {
             size: file_size,
             total_entries,
             messages,
-            original_content: Some(content),
         })
     }
 
@@ -271,12 +270,8 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn restore_session_file(&self, session: &Session) -> Result<()> {
-        if let Some(ref content) = session.original_content {
-            let path = self.get_session_file_path(&session.project_name, &session.id);
-            fs::create_dir_all(path.parent().unwrap())?;
-            fs::write(&path, content)?;
-        }
+    pub fn restore_session_file(&self, _session: &Session) -> Result<()> {
+        // Stub: wird in Task 2 mit directory-based trash implementiert (fs::rename)
         Ok(())
     }
 }
@@ -478,32 +473,20 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_session_file_recreates_jsonl() {
-        let (tmp, store) = create_test_store();
-
-        let project_dir = tmp.path().join("-home-g-myproject");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        let original_content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"x"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"uuid":"y"}"#;
-        fs::write(project_dir.join("test-session.jsonl"), original_content).unwrap();
-
-        let sessions = store.load_sessions().unwrap();
-        assert_eq!(sessions.len(), 1);
-        let session = sessions[0].clone();
-
-        store
-            .delete_session_file("-home-g-myproject", "test-session")
-            .unwrap();
-        let sessions_after_delete = store.load_sessions().unwrap();
-        assert_eq!(sessions_after_delete.len(), 0);
-
-        store.restore_session_file(&session).unwrap();
-
-        let sessions_after_restore = store.load_sessions().unwrap();
-        assert_eq!(sessions_after_restore.len(), 1);
-        assert_eq!(sessions_after_restore[0].id, "test-session");
-        assert_eq!(sessions_after_restore[0].messages.len(), 2);
+    fn test_restore_session_file_is_stub() {
+        // restore_session_file ist ein Stub bis Task 2 directory-based trash implementiert.
+        let (_tmp, store) = create_test_store();
+        let session = Session {
+            id: "s".to_string(),
+            project_path: "/p".to_string(),
+            project_name: "p".to_string(),
+            created_at: "".to_string(),
+            updated_at: "".to_string(),
+            size: 0,
+            total_entries: 0,
+            messages: vec![],
+        };
+        assert!(store.restore_session_file(&session).is_ok());
     }
 
     #[test]
@@ -534,7 +517,6 @@ mod tests {
             size: 100,
             total_entries: 1,
             messages: vec![],
-            original_content: None,
         }];
         store.save_trash(&sessions).unwrap();
         let loaded = store.load_trash().unwrap();

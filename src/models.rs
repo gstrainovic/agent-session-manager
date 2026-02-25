@@ -10,8 +10,6 @@ pub struct Session {
     pub size: u64,
     pub total_entries: usize,
     pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,7 +35,6 @@ impl Session {
             size: 0,
             total_entries: 0,
             messages: Vec::new(),
-            original_content: None,
         }
     }
 
