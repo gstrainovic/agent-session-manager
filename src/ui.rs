@@ -64,9 +64,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(chunks[1]);
 
-    // terminal_size für Maus-Klick-Berechnung aktuell halten
+    // terminal_size und click_regions für Maus-Klick-Berechnung aktuell halten
     let area = f.area();
     app.terminal_size = (area.width, area.height);
+    app.update_click_regions(area.width, area.height);
 
     draw_list(f, content_chunks[0], app);
     draw_preview(f, content_chunks[1], app);

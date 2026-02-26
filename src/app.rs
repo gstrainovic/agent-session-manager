@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::models::Session;
 use crate::store::SessionStore;
+use ratatui::layout::{Position, Rect};
 use ratatui::widgets::TableState;
 use std::time::Instant;
 
@@ -37,6 +38,23 @@ pub enum ConfirmAction {
     TrashZeroMessages,         // Move all 0-message sessions to trash
 }
 
+/// Aktion, die durch einen Mausklick auf eine registrierte Region ausgelöst wird.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClickAction {
+    SwitchTab(Tab),
+    ResumeSession,
+    DeleteSession,
+    ExportSession,
+    CleanZeroMessages,
+    ToggleSearch,
+    ToggleSort,
+    OpenSettings,
+    ToggleHelp,
+    Quit,
+    RestoreFromTrash,
+    EmptyTrash,
+}
+
 pub struct App {
     pub current_tab: Tab,
     pub sessions: Vec<Session>,
@@ -60,6 +78,8 @@ pub struct App {
     pub config: AppConfig,
     pub list_table_state: TableState,
     pub terminal_size: (u16, u16),
+    /// Klickbare Regionen, die bei jedem Frame neu berechnet werden.
+    pub click_regions: Vec<(Rect, ClickAction)>,
 }
 
 impl App {
@@ -87,6 +107,7 @@ impl App {
             config: AppConfig::load(),
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
+            click_regions: Vec::new(),
         }
     }
 
@@ -115,6 +136,7 @@ impl App {
             config: AppConfig::default(),
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
+            click_regions: Vec::new(),
         }
     }
 
@@ -148,29 +170,89 @@ impl App {
         self.preview_scroll = 0;
     }
 
-    /// Behandelt einen Mausklick. Koordinaten sind Terminal-Zellen (col, row).
-    pub fn handle_mouse_click(&mut self, col: u16, row: u16) {
+    /// Prüft ob ein Klick eine registrierte Region trifft und gibt die Aktion zurück.
+    pub fn get_click_action(&self, col: u16, row: u16) -> Option<ClickAction> {
+        let pos = Position { x: col, y: row };
+        for (rect, action) in &self.click_regions {
+            if rect.contains(pos) {
+                return Some(action.clone());
+            }
+        }
+        None
+    }
+
+    /// Berechnet klickbare Regionen für Tab-Bar und Command-Bar neu.
+    /// Wird am Anfang jedes Frames in draw() aufgerufen.
+    pub fn update_click_regions(&mut self, width: u16, height: u16) {
+        self.click_regions.clear();
+
+        // Tab-Bar (Zeilen 0..2)
+        let sessions_text = format!("  ● 1 Sessions ({})  ", self.sessions.len());
+        let sw = sessions_text.chars().count() as u16;
+        // Sessions-Tab: linker Rand (1 Zelle) + Sessions-Text
+        self.click_regions.push((
+            Rect { x: 0, y: 0, width: 1 + sw, height: 3 },
+            ClickAction::SwitchTab(Tab::Sessions),
+        ));
+        // Trash-Tab: vom Ende des Sessions-Tabs bis zum rechten Rand
+        self.click_regions.push((
+            Rect { x: 1 + sw, y: 0, width: width.saturating_sub(1 + sw), height: 3 },
+            ClickAction::SwitchTab(Tab::Trash),
+        ));
+
+        // Command-Bar (unterste 3 Zeilen)
+        let cmd_y = height.saturating_sub(3);
+        // nav: "↑↓" (2) + " nav  " (6) + "←→" (2) + " focus" (6) = 16 Zeichen
+        // sep: "  │  " = 5 Zeichen → x_offset startet bei 21
+        let mut x: u16 = 21;
+
+        let actions: Vec<(&str, &str, ClickAction)> = match self.current_tab {
+            Tab::Sessions => vec![
+                ("Enter", " resume  ", ClickAction::ResumeSession),
+                ("d", " delete  ", ClickAction::DeleteSession),
+                ("e", " export  ", ClickAction::ExportSession),
+                ("0", " clean  ", ClickAction::CleanZeroMessages),
+                ("f", " search  ", ClickAction::ToggleSearch),
+                ("s", " sort  ", ClickAction::ToggleSort),
+                ("g", " settings  ", ClickAction::OpenSettings),
+                ("h", " help  ", ClickAction::ToggleHelp),
+                ("q", " quit", ClickAction::Quit),
+            ],
+            Tab::Trash => vec![
+                ("Enter", " restore  ", ClickAction::RestoreFromTrash),
+                ("d", " delete  ", ClickAction::DeleteSession),
+                ("t", " empty  ", ClickAction::EmptyTrash),
+                ("s", " sort  ", ClickAction::ToggleSort),
+                ("g", " settings  ", ClickAction::OpenSettings),
+                ("h", " help  ", ClickAction::ToggleHelp),
+                ("q", " quit", ClickAction::Quit),
+            ],
+        };
+        for (key, desc, action) in actions {
+            let kw = key.chars().count() as u16;
+            let dw = desc.chars().count() as u16;
+            self.click_regions.push((
+                Rect { x, y: cmd_y, width: kw + dw, height: 3 },
+                action,
+            ));
+            x += kw + dw;
+        }
+    }
+
+    /// Behandelt einen Mausklick auf die Session-Liste oder das Preview-Panel.
+    /// Tab-Bar und Command-Bar werden über click_regions in get_click_action abgehandelt.
+    pub fn handle_list_click(&mut self, col: u16, row: u16) {
         let (width, height) = self.terminal_size;
         if width == 0 || height == 0 {
             return;
         }
-        // Tab-Bar: obere 3 Zeilen
-        if row < 3 {
-            let list_width = width * 35 / 100;
-            if col < list_width {
-                self.switch_to_tab(Tab::Sessions);
-            } else {
-                self.switch_to_tab(Tab::Trash);
-            }
+        // Tab-Bar und Command-Bar überspringen
+        if row < 3 || row >= height.saturating_sub(3) {
             return;
         }
-        // Command Bar: unterste 3 Zeilen
-        if row >= height.saturating_sub(3) {
-            return;
-        }
-        let list_width = width * 35 / 100;
+        let list_width = width * 30 / 100;
         if col < list_width {
-            // Klick in Session-Liste: Zeile 3=Border, 4=Header, 5+=Sessions
+            // Zeile 3=Border, 4=Header, 5+=Session-Einträge
             if row >= 5 {
                 let clicked = self.list_table_state.offset() + (row - 5) as usize;
                 let len = self.filtered_sessions().len();

@@ -117,7 +117,9 @@ fn run_app<B: Backend>(
                         }
                     }
                     Event::Mouse(mouse) => {
-                        handle_mouse_event(&mut app, mouse);
+                        if handle_mouse_event(&mut app, mouse) {
+                            return Ok(None);
+                        }
                     }
                     _ => {}
                 }
@@ -318,7 +320,8 @@ fn handle_key_event(
     None
 }
 
-fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) {
+/// Gibt `true` zurück wenn die App beendet werden soll.
+fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) -> bool {
     match mouse.kind {
         MouseEventKind::ScrollUp => match app.focus {
             crate::app::FocusPanel::List => app.select_prev(),
@@ -329,10 +332,62 @@ fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) {
             crate::app::FocusPanel::Preview => app.preview_scroll_down(3),
         },
         MouseEventKind::Down(MouseButton::Left) => {
-            app.handle_mouse_click(mouse.column, mouse.row);
+            let (col, row) = (mouse.column, mouse.row);
+            if let Some(action) = app.get_click_action(col, row) {
+                return dispatch_click_action(app, action);
+            }
+            app.handle_list_click(col, row);
         }
         _ => {}
     }
+    false
+}
+
+/// Führt eine ClickAction aus. Gibt `true` zurück wenn die App beendet werden soll.
+fn dispatch_click_action(app: &mut App, action: crate::app::ClickAction) -> bool {
+    // Keine Aktionen während modaler Dialoge (außer Tab-Wechsel)
+    use crate::app::ClickAction;
+    if matches!(action, ClickAction::SwitchTab(_)) {
+        if let ClickAction::SwitchTab(tab) = action {
+            app.switch_to_tab(tab);
+        }
+        return false;
+    }
+    if app.show_settings || app.show_help || app.is_confirmation_pending() {
+        return false;
+    }
+    match action {
+        ClickAction::SwitchTab(_) => unreachable!(),
+        ClickAction::ResumeSession => app.switch_to_selected_session(),
+        ClickAction::DeleteSession => app.request_delete_confirmation(),
+        ClickAction::ExportSession => {
+            if let Some(session) = app.get_selected_session() {
+                let export_dir = app.config.resolved_export_path();
+                let session_clone = session.clone();
+                match commands::export_session(&session_clone, &export_dir) {
+                    Ok(path) => app.set_status(format!("Exported to {}", path)),
+                    Err(_) => app.set_status("Export failed".to_string()),
+                }
+            }
+        }
+        ClickAction::CleanZeroMessages => app.request_trash_zero_messages(),
+        ClickAction::ToggleSearch => app.toggle_search(),
+        ClickAction::ToggleSort => {
+            app.toggle_sort();
+            let sort_name = match app.sort_field {
+                crate::app::SortField::Project => "project",
+                crate::app::SortField::Messages => "messages",
+                crate::app::SortField::Date => "date",
+            };
+            app.set_status(format!("Sorted by: {}", sort_name));
+        }
+        ClickAction::OpenSettings => app.open_settings(),
+        ClickAction::ToggleHelp => app.toggle_help(),
+        ClickAction::Quit => return true,
+        ClickAction::RestoreFromTrash => app.restore_selected_from_trash(),
+        ClickAction::EmptyTrash => app.request_empty_trash(),
+    }
+    false
 }
 
 #[cfg(test)]
@@ -495,6 +550,7 @@ mod tests {
             make_session("s3", "p3"),
         ]);
         app.terminal_size = (160, 40);
+        app.update_click_regions(160, 40);
         // row=6 → list_data_row=1 → sessions[offset+1]
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 6));
         assert_eq!(app.selected_session_idx, 1);
@@ -503,8 +559,9 @@ mod tests {
     #[test]
     fn test_mouse_click_tab_bar_switches_to_trash() {
         let mut app = App::with_sessions(vec![]);
-        app.terminal_size = (160, 40);
-        // col=100 > 35% of 160 (=56) → Trash tab
+        // Sessions-Tab: "  ● 1 Sessions (0)  " = 20 Zeichen → cols 0-20
+        // Trash-Tab: cols 21+ → col=100 trifft Trash
+        app.update_click_regions(160, 40);
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 100, 1));
         assert_eq!(app.current_tab, crate::app::Tab::Trash);
     }
@@ -513,10 +570,21 @@ mod tests {
     fn test_mouse_click_tab_bar_switches_to_sessions() {
         let mut app = App::with_sessions(vec![]);
         app.current_tab = crate::app::Tab::Trash;
-        app.terminal_size = (160, 40);
-        // col=10 < 35% of 160 (=56) → Sessions tab
+        // col=10 liegt im Sessions-Tab (cols 0-20)
+        app.update_click_regions(160, 40);
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 1));
         assert_eq!(app.current_tab, crate::app::Tab::Sessions);
+    }
+
+    #[test]
+    fn test_mouse_click_command_bar_opens_settings() {
+        let mut app = App::with_sessions(vec![]);
+        app.update_click_regions(160, 40);
+        // "g settings" startet bei x=82 (nav=16 + sep=5 + Enter+resume=14 + d+delete=10
+        // + e+export=10 + 0+clean=9 + f+search=10 + s+sort=8 = 82), Breite=12
+        // cmd_y = 40-3 = 37 → row=38 liegt in height:3
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 85, 38));
+        assert!(app.show_settings);
     }
 
     #[test]
