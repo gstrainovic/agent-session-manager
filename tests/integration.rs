@@ -230,3 +230,128 @@ fn test_empty_trash() {
         "Trash-Verzeichnis muss leer sein"
     );
 }
+
+// ─── MAUS-SIMULIERTE WORKFLOWS (Layer 2) ─────────────────────────────────────
+// Layer 2 hat keinen Zugriff auf handle_mouse_event (main.rs).
+// Stattdessen rufen wir die App-Methoden auf, die dispatch_click_action aufruft —
+// identisch mit dem Maus-Pfad, nur ohne Terminal-Encoding.
+
+#[test]
+fn test_mouse_export_click_creates_file() {
+    // Simuliert: Mausklick auf "e export" in Command-Bar → Datei wird erstellt
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-mouse-export",
+        "uuid-mouse-exp",
+        &[("user", "exported via mouse click")],
+    );
+    let sessions = load_sessions(&env);
+    env.activate();
+
+    let mut app = App::new(sessions, vec![]);
+    app.config.export_path = env.export_dir.to_string_lossy().to_string();
+
+    // Maus-Click-Aktion: ExportSession (entspricht dispatch_click_action → ExportSession)
+    let export_path = app.config.resolved_export_path();
+    if let Some(session) = app.get_selected_session() {
+        let session_clone = session.clone();
+        let result = agent_session_manager::commands::export_session(&session_clone, &export_path);
+        assert!(result.is_ok());
+    }
+
+    TestEnv::deactivate();
+
+    let files: Vec<_> = env
+        .export_dir
+        .read_dir()
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    assert_eq!(files.len(), 1, "Genau eine Datei muss via Maus-Export erstellt werden");
+    let content = std::fs::read_to_string(files[0].path()).unwrap();
+    assert!(content.contains("exported via mouse click"));
+}
+
+#[test]
+fn test_mouse_settings_save_persists_config() {
+    // Simuliert: Settings-Modal öffnen, Pfad eingeben, Save-Button klicken
+    let env = TestEnv::new();
+    env.activate();
+
+    let mut app = App::new(vec![], vec![]);
+    // Maus-Click: OpenSettings
+    app.open_settings();
+    assert!(app.show_settings);
+    // Benutzer tippt neuen Pfad
+    app.settings_input = env.export_dir.to_string_lossy().to_string();
+    // Maus-Click: SaveSettings
+    app.save_settings();
+    assert!(!app.show_settings, "Modal muss nach Save geschlossen sein");
+
+    TestEnv::deactivate();
+
+    let config_file = env.config_dir.join("config.json");
+    assert!(config_file.exists(), "config.json muss nach Maus-Save existieren");
+    let content = std::fs::read_to_string(&config_file).unwrap();
+    assert!(content.contains(&env.export_dir.to_string_lossy().replace('\\', "\\\\")));
+}
+
+#[test]
+fn test_mouse_delete_confirm_yes_moves_to_trash() {
+    // Simuliert: Session auswählen, d drücken, [y] Maus-Click → Session im Trash
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-mouse-del",
+        "uuid-mouse-del",
+        &[("user", "delete via mouse")],
+    );
+    let sessions = load_sessions(&env);
+    env.activate();
+
+    let mut app = App::new(sessions, vec![]);
+    assert_eq!(app.sessions.len(), 1);
+
+    // Maus-Click: DeleteSession (öffnet Confirmation)
+    app.request_delete_confirmation();
+    assert!(app.is_confirmation_pending());
+
+    // Maus-Click: ConfirmYes → move_selected_to_trash
+    let session = app.get_selected_session().unwrap().clone();
+    agent_session_manager::commands::delete_session(&session).unwrap();
+    app.move_selected_to_trash();
+    app.confirm_action = None;
+
+    assert_eq!(app.sessions.len(), 0);
+    assert_eq!(app.trash.len(), 1);
+    TestEnv::deactivate();
+
+    let trash_file = env.claude_dir.join("trash/-mouse-del/uuid-mouse-del.jsonl");
+    assert!(trash_file.exists(), "Session muss nach Maus-Confirm-Yes im Trash sein");
+}
+
+#[test]
+fn test_mouse_confirm_no_keeps_session() {
+    // Simuliert: [d] delete, dann [n] Maus-Click → Session bleibt
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-mouse-keep",
+        "uuid-mouse-keep",
+        &[("user", "keep me")],
+    );
+    let sessions = load_sessions(&env);
+    env.activate();
+
+    let mut app = App::new(sessions, vec![]);
+    app.request_delete_confirmation();
+    assert!(app.is_confirmation_pending());
+
+    // Maus-Click: ConfirmNo
+    app.cancel_confirmation();
+    assert!(!app.is_confirmation_pending());
+    assert_eq!(app.sessions.len(), 1, "Session muss nach Maus-Confirm-No erhalten bleiben");
+
+    TestEnv::deactivate();
+}

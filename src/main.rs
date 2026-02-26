@@ -1164,4 +1164,230 @@ mod tests {
         handle_key_event(&mut app, press(KeyCode::Char('e')));
         assert!(app.status_message.unwrap().contains("Exported"));
     }
+
+    // ─── Neue Layer-1-Maus-Tests: Command-Bar Click-Aktionen ──────────────────
+
+    #[test]
+    fn test_click_command_bar_delete_opens_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::DeleteSession)
+            .map(|(r, _)| *r);
+        let rect = region.expect("DeleteSession-Region muss registriert sein");
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert!(app.is_confirmation_pending());
+    }
+
+    #[test]
+    fn test_click_command_bar_search_opens_search() {
+        let mut app = App::with_sessions(vec![]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::ToggleSearch)
+            .map(|(r, _)| *r);
+        let rect = region.expect("ToggleSearch-Region muss registriert sein");
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert!(app.show_search);
+    }
+
+    #[test]
+    fn test_click_command_bar_sort_changes_sort_field() {
+        let mut app = App::with_sessions(vec![]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::ToggleSort)
+            .map(|(r, _)| *r);
+        let rect = region.expect("ToggleSort-Region muss registriert sein");
+        let initial = app.sort_field.clone();
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert_ne!(
+            std::mem::discriminant(&app.sort_field),
+            std::mem::discriminant(&initial),
+            "Sort-Feld muss sich geändert haben"
+        );
+    }
+
+    #[test]
+    fn test_click_command_bar_help_opens_help() {
+        let mut app = App::with_sessions(vec![]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::ToggleHelp)
+            .map(|(r, _)| *r);
+        let rect = region.expect("ToggleHelp-Region muss in Command-Bar registriert sein");
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert!(app.show_help);
+    }
+
+    #[test]
+    fn test_click_command_bar_resume_switches_session() {
+        let mut app = App::with_sessions(vec![make_session("uuid-001", "my-project")]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::ResumeSession)
+            .map(|(r, _)| *r);
+        let rect = region.expect("ResumeSession-Region muss registriert sein");
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert!(app.resume_session_id.is_some());
+    }
+
+    #[test]
+    fn test_handle_list_click_with_scrolled_offset() {
+        // Offset > 0: wenn Liste gescrollt ist muss der korrekte Index gewählt werden
+        let sessions: Vec<_> = (0..10).map(|i| make_session(&format!("s{i}"), "p")).collect();
+        let mut app = App::with_sessions(sessions);
+        app.terminal_size = (160, 24);
+        // Offset auf 3 setzen (erste 3 Sessions sind gescrollt)
+        *app.list_table_state.offset_mut() = 3;
+        // Klick auf row=5 (erste sichtbare Session-Zeile) soll Session 3 (0+offset) wählen
+        app.handle_list_click(10, 5);
+        assert_eq!(app.selected_session_idx, 3);
+    }
+
+    #[test]
+    fn test_mouse_scroll_at_upper_list_boundary_does_not_wrap() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.terminal_size = (160, 40);
+        assert_eq!(app.selected_session_idx, 0);
+        // ScrollUp an Grenze — Index bleibt bei 0
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 10, 10));
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_mouse_scroll_at_lower_list_boundary_does_not_wrap() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.terminal_size = (160, 40);
+        app.selected_session_idx = 1;
+        // ScrollDown an unterer Grenze — Index bleibt bei 1
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 10, 10));
+        assert_eq!(app.selected_session_idx, 1);
+    }
+
+    #[test]
+    fn test_trash_tab_command_bar_has_restore_not_resume() {
+        let mut app = App::with_sessions(vec![]);
+        app.switch_tab();
+        render_frame(&mut app, 160, 40);
+        let has_restore = app
+            .click_regions
+            .iter()
+            .any(|(_, a)| *a == crate::app::ClickAction::RestoreFromTrash);
+        let has_resume = app
+            .click_regions
+            .iter()
+            .any(|(_, a)| *a == crate::app::ClickAction::ResumeSession);
+        assert!(has_restore, "Trash-Tab muss RestoreFromTrash-Region haben");
+        assert!(!has_resume, "Trash-Tab darf keine ResumeSession-Region haben");
+    }
+
+    // ─── Lücken-Tests: Quit, Restore per Maus, Focus per Maus ────────────────
+
+    #[test]
+    fn test_click_command_bar_quit_returns_true() {
+        let mut app = App::with_sessions(vec![]);
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::Quit)
+            .map(|(r, _)| *r);
+        let rect = region.expect("Quit-Region muss in Command-Bar registriert sein");
+        let should_quit = handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert!(should_quit, "Klick auf Quit muss true zurückgeben (App beenden)");
+    }
+
+    #[test]
+    fn test_click_command_bar_restore_in_trash_tab_restores_session() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        // Session in Trash verschieben
+        app.move_selected_to_trash();
+        assert_eq!(app.trash.len(), 1);
+        // Zu Trash-Tab wechseln
+        app.switch_tab();
+        // Statusmeldung löschen — solange sie angezeigt wird, zeigt draw_commands
+        // nur den Status-Text (keine Click-Regionen)
+        app.status_message = None;
+        // Frame rendern — registriert RestoreFromTrash-Region im Trash-Tab
+        render_frame(&mut app, 160, 40);
+        let region = app
+            .click_regions
+            .iter()
+            .find(|(_, a)| *a == crate::app::ClickAction::RestoreFromTrash)
+            .map(|(r, _)| *r);
+        let rect = region.expect("RestoreFromTrash-Region muss im Trash-Tab registriert sein");
+        handle_mouse_event(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), rect.x, rect.y),
+        );
+        assert_eq!(app.trash.len(), 0, "Trash muss nach Maus-Restore leer sein");
+        assert_eq!(app.sessions.len(), 1, "Session muss nach Maus-Restore zurück sein");
+    }
+
+    #[test]
+    fn test_mouse_click_preview_area_sets_focus_to_preview() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.terminal_size = (160, 40);
+        // Klick rechts der 30%-Grenze (list_width = 160*30/100 = 48)
+        // row=10 liegt zwischen Tab-Bar (row<3) und Command-Bar (row>=37)
+        app.handle_list_click(100, 10);
+        assert_eq!(
+            app.focus,
+            crate::app::FocusPanel::Preview,
+            "Klick auf Preview-Bereich muss Focus auf Preview setzen"
+        );
+    }
+
+    #[test]
+    fn test_mouse_click_list_area_sets_focus_to_list() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.terminal_size = (160, 40);
+        // Fokus zuerst auf Preview setzen
+        app.focus = crate::app::FocusPanel::Preview;
+        // Klick links der 30%-Grenze (list_width = 48), row=6 = erste Session-Zeile
+        app.handle_list_click(10, 6);
+        assert_eq!(
+            app.focus,
+            crate::app::FocusPanel::List,
+            "Klick auf Listen-Bereich muss Focus auf List setzen"
+        );
+    }
 }
