@@ -66,7 +66,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .constraints([Constraint::Percentage(40), Constraint::Min(0)])
         .split(chunks[1]);
 
     draw_list(f, content_chunks[0], app);
