@@ -66,7 +66,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(chunks[1]);
 
     draw_list(f, content_chunks[0], app);
@@ -200,7 +200,7 @@ fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
         Constraint::Min(10),
         Constraint::Min(8),
         Constraint::Length(16),
-        Constraint::Length(5),
+        Constraint::Length(7),
     ];
 
     let table = Table::new(rows, widths)

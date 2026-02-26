@@ -319,9 +319,9 @@ impl App {
     pub fn toggle_sort(&mut self) {
         self.sort_field = match self.sort_field {
             SortField::Project => SortField::Name,
-            SortField::Name => SortField::Messages,
-            SortField::Messages => SortField::Date,
-            SortField::Date => SortField::Project,
+            SortField::Name => SortField::Date,
+            SortField::Date => SortField::Messages,
+            SortField::Messages => SortField::Project,
         };
         self.sort_direction = SortDirection::Descending;
     }
@@ -1230,11 +1230,11 @@ mod tests {
         let mut app = App::with_sessions(vec![]);
         assert_eq!(app.sort_field, SortField::Date);
         app.toggle_sort();
+        assert_eq!(app.sort_field, SortField::Messages);
+        app.toggle_sort();
         assert_eq!(app.sort_field, SortField::Project);
         app.toggle_sort();
         assert_eq!(app.sort_field, SortField::Name);
-        app.toggle_sort();
-        assert_eq!(app.sort_field, SortField::Messages);
         app.toggle_sort();
         assert_eq!(app.sort_field, SortField::Date);
     }
