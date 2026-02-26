@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, Wrap},
     Frame,
 };
 
@@ -300,34 +300,38 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(""));
         }
 
-        // Scroll indicator in title
         let total_lines = lines.len();
-        let visible_height = area.height.saturating_sub(2) as usize; // minus Borders
 
-        let title = if total_lines > visible_height {
-            let current_page = (app.preview_scroll as usize / visible_height.max(1)) + 1;
-            let total_pages = (total_lines + visible_height - 1) / visible_height.max(1);
-            format!(" Preview  ↓ {}/{} ", current_page, total_pages)
+        let border_color = if app.focus == FocusPanel::Preview {
+            Color::Yellow
         } else {
-            " Preview ".to_string()
+            Color::DarkGray
         };
 
         let preview = Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title(title)
+                    .title(" Preview ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(if app.focus == FocusPanel::Preview {
-                        Color::Yellow
-                    } else {
-                        Color::DarkGray
-                    })),
+                    .border_style(Style::default().fg(border_color)),
             )
             .style(Style::default().bg(Color::Black))
             .wrap(Wrap { trim: false })
             .scroll((app.preview_scroll, 0));
 
         f.render_widget(preview, area);
+
+        // Scrollbar über dem Preview rendern
+        let mut scrollbar_state = ScrollbarState::new(total_lines)
+            .position(app.preview_scroll as usize);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .style(Style::default().fg(border_color)),
+            area,
+            &mut scrollbar_state,
+        );
     } else {
         let empty = Paragraph::new("No session selected. Use ↑/↓ to navigate.")
             .block(
