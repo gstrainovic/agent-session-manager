@@ -463,6 +463,15 @@ mod tests {
     use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     use crate::app::{FocusPanel, Tab};
     use crate::models::{Message, Session};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    /// Führt einen draw-Zyklus durch, um Click-Regionen zu füllen (Single Source of Truth).
+    fn render_frame(app: &mut App, width: u16, height: u16) {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| ui::draw(f, app)).unwrap();
+    }
 
     fn make_session(id: &str, project: &str) -> Session {
         Session {
@@ -620,7 +629,7 @@ mod tests {
             make_session("s3", "p3"),
         ]);
         app.terminal_size = (160, 40);
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // row=6 → list_data_row=1 → sessions[offset+1]
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 6));
         assert_eq!(app.selected_session_idx, 1);
@@ -631,7 +640,7 @@ mod tests {
         let mut app = App::with_sessions(vec![]);
         // Sessions-Tab: "  ● 1 Sessions (0)  " = 20 Zeichen → cols 0-20
         // Trash-Tab: "  ○ 2 Trash (0)  " = 18 Zeichen → cols 21-38
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 25, 1));
         assert_eq!(app.current_tab, crate::app::Tab::Trash);
     }
@@ -640,7 +649,7 @@ mod tests {
     fn test_mouse_click_tab_bar_help_opens_help() {
         let mut app = App::with_sessions(vec![]);
         // Help-Hint: "│  h help  " = 11 Zeichen → cols 39-49
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         assert!(!app.show_help);
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 42, 1));
         assert!(app.show_help);
@@ -651,7 +660,7 @@ mod tests {
         let mut app = App::with_sessions(vec![]);
         app.current_tab = crate::app::Tab::Trash;
         // col=10 liegt im Sessions-Tab (cols 0-20)
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 1));
         assert_eq!(app.current_tab, crate::app::Tab::Sessions);
     }
@@ -659,7 +668,7 @@ mod tests {
     #[test]
     fn test_mouse_click_command_bar_opens_settings() {
         let mut app = App::with_sessions(vec![]);
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // "g settings" startet bei x=82 (nav=16 + sep=5 + Enter+resume=14 + d+delete=10
         // + e+export=10 + 0+clean=9 + f+search=10 + s+sort=8 = 82), Breite=12
         // cmd_y = 40-3 = 37 → row=38 liegt in height:3
@@ -685,7 +694,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.toggle_help();
         assert!(app.show_help);
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Klick auf (0, 0) — keine Regionen registriert bei show_help → click-outside
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
         assert!(!app.show_help);
@@ -697,7 +706,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.open_settings();
         assert!(app.show_settings);
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Klick auf (0, 0) — außerhalb des Settings-Modals
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
         assert!(!app.show_settings);
@@ -709,7 +718,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.toggle_search();
         assert!(app.show_search);
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Klick auf (0, 0) — keine Regionen bei show_search → click-outside
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
         assert!(!app.show_search);
@@ -721,7 +730,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.request_delete_confirmation();
         assert!(app.is_confirmation_pending());
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Klick auf (0, 0) — außerhalb der [y]/[n] Buttons
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
         assert!(!app.is_confirmation_pending());
@@ -762,7 +771,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.open_settings();
         app.settings_input = "/new/path".to_string();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Settings-Modal: popup_width = 160*0.6 = 96, popup_x = 32, inner_x = 33
         // btn_y = (40-7)/2 + 1 + 4 = 16 + 1 + 4 = 21
         // Save-Button: x=33, width=16, y=21
@@ -778,7 +787,7 @@ mod tests {
         app.open_settings();
         let original = app.config.export_path.clone();
         app.settings_input = "/changed".to_string();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // Cancel-Button: x=33+16=49, width=12, y=21
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 52, 21));
         assert!(!app.show_settings);
@@ -793,7 +802,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.confirm_action = Some(crate::app::ConfirmAction::DeletePermanently("t1".to_string()));
         app.set_status("PERMANENTLY delete 'p1'? Press 'd' or 'y' to confirm, 'n' or Esc to cancel".to_string());
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // [y] Button: nach Question-Text + 2 Zeichen Abstand
         // "PERMANENTLY delete 'p1'?" = 24 Zeichen + 2 = 26 → x=26
         let action = app.get_click_action(28, 38);
@@ -808,7 +817,7 @@ mod tests {
         app.terminal_size = (160, 40);
         app.request_delete_confirmation();
         assert!(app.is_confirmation_pending());
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         // [n] Button: nach [y] Button + 2 Zeichen
         // Für diesen Test: prüfen dass ConfirmNo Region existiert
         let has_confirm_no = app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmNo);
@@ -827,19 +836,19 @@ mod tests {
         let mut app = App::with_sessions(vec![]);
         // Help-Modal: keine Regionen registriert
         app.toggle_help();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         assert!(app.click_regions.is_empty());
 
         // Search-Modal: keine Regionen
         app.toggle_help();
         app.toggle_search();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         assert!(app.click_regions.is_empty());
 
         // Settings-Modal: nur Save/Cancel Regionen
         app.show_search = false;
         app.open_settings();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         assert_eq!(app.click_regions.len(), 2);
         assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::SaveSettings));
         assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::CancelSettings));
@@ -848,7 +857,7 @@ mod tests {
         app.cancel_settings();
         app.sessions = vec![make_session("s1", "p1")];
         app.request_delete_confirmation();
-        app.update_click_regions(160, 40);
+        render_frame(&mut app, 160, 40);
         assert_eq!(app.click_regions.len(), 2);
         assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmYes));
         assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmNo));

@@ -1,4 +1,4 @@
-use crate::app::{App, FocusPanel, Tab};
+use crate::app::{App, ClickAction, FocusPanel, Tab};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -57,17 +57,17 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         )
         .split(f.area());
 
+    // Click-Regionen jedes Frame neu aufbauen (Single Source of Truth)
+    let area = f.area();
+    app.terminal_size = (area.width, area.height);
+    app.click_regions.clear();
+
     draw_tabs(f, chunks[0], app);
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(chunks[1]);
-
-    // terminal_size und click_regions für Maus-Klick-Berechnung aktuell halten
-    let area = f.area();
-    app.terminal_size = (area.width, area.height);
-    app.update_click_regions(area.width, area.height);
 
     draw_list(f, content_chunks[0], app);
     draw_preview(f, content_chunks[1], app);
@@ -87,7 +87,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
+fn draw_tabs(f: &mut Frame, area: Rect, app: &mut App) {
     let session_count = app.sessions.len();
     let trash_count = app.trash.len();
 
@@ -101,19 +101,14 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     let (sessions_marker, sessions_style) = tab_indicator(Tab::Sessions);
     let (trash_marker, trash_style) = tab_indicator(Tab::Trash);
 
+    let sessions_text = format!("  {} 1 Sessions ({})  ", sessions_marker, session_count);
+    let trash_text = format!("  {} 2 Trash ({})  ", trash_marker, trash_count);
+    let help_text = "│  h help  ";
+
     let tabs = vec![
-        Span::styled(
-            format!("  {} 1 Sessions ({})  ", sessions_marker, session_count),
-            sessions_style,
-        ),
-        Span::styled(
-            format!("  {} 2 Trash ({})  ", trash_marker, trash_count),
-            trash_style,
-        ),
-        Span::styled(
-            "│  h help  ",
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(&sessions_text, sessions_style),
+        Span::styled(&trash_text, trash_style),
+        Span::styled(help_text, Style::default().fg(Color::DarkGray)),
     ];
 
     let tabs_line = Line::from(tabs);
@@ -125,6 +120,25 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     );
 
     f.render_widget(tabs_widget, area);
+
+    // Click-Regionen direkt beim Rendering registrieren (Single Source of Truth)
+    // Block hat 1px Border links → Content startet bei area.x + 1
+    let content_x = area.x + 1;
+    let sw = sessions_text.chars().count() as u16;
+    let tw = trash_text.chars().count() as u16;
+    let hw = help_text.chars().count() as u16;
+    app.click_regions.push((
+        Rect { x: content_x, y: area.y, width: sw, height: area.height },
+        ClickAction::SwitchTab(Tab::Sessions),
+    ));
+    app.click_regions.push((
+        Rect { x: content_x + sw, y: area.y, width: tw, height: area.height },
+        ClickAction::SwitchTab(Tab::Trash),
+    ));
+    app.click_regions.push((
+        Rect { x: content_x + sw + tw, y: area.y, width: hw, height: area.height },
+        ClickAction::ToggleHelp,
+    ));
 }
 
 fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
@@ -365,7 +379,7 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn draw_search_modal(f: &mut Frame, app: &App) {
+fn draw_search_modal(f: &mut Frame, app: &mut App) {
     let size = f.area();
     let area = Rect {
         x: size.width / 4,
@@ -386,9 +400,12 @@ fn draw_search_modal(f: &mut Frame, app: &App) {
         .style(Style::default().bg(Color::Black).fg(Color::White));
 
     f.render_widget(search, area);
+
+    // Search-Modal: Keine Click-Regionen → click-outside in main.rs schließt das Modal
+    app.click_regions.clear();
 }
 
-fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
+fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
     let sep = Span::styled("  │  ", Style::default().fg(Color::DarkGray));
 
     // Confirmation mit [y]/[n] Buttons
@@ -399,16 +416,38 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
             } else {
                 msg.as_str()
             };
+            let question_with_pad = format!("{}  ", question);
+            let yes_text = " [y] yes ";
+            let gap = "  ";
+            let no_text = " [n] no  ";
             let bar = Paragraph::new(Line::from(vec![
-                Span::styled(format!("{}  ", question), Style::default().fg(Color::Yellow)),
-                Span::styled(" [y] yes ", Style::default().fg(Color::Black).bg(Color::Green)),
-                Span::raw("  "),
-                Span::styled(" [n] no  ", Style::default().fg(Color::Black).bg(Color::Red)),
+                Span::styled(&question_with_pad, Style::default().fg(Color::Yellow)),
+                Span::styled(yes_text, Style::default().fg(Color::Black).bg(Color::Green)),
+                Span::raw(gap),
+                Span::styled(no_text, Style::default().fg(Color::Black).bg(Color::Red)),
             ]))
             .block(Block::default().borders(Borders::TOP).border_style(
                 Style::default().fg(Color::DarkGray),
             ));
             f.render_widget(bar, area);
+
+            // Click-Regionen: Content startet bei area.x + 0 (TOP border nimmt nur y)
+            // Block mit Borders::TOP hat content bei area.y + 1
+            let content_y = area.y + 1;
+            let q_width = question_with_pad.chars().count() as u16;
+            let yes_width = yes_text.chars().count() as u16;
+            let gap_width = gap.chars().count() as u16;
+            let no_width = no_text.chars().count() as u16;
+            // Modale Regionen: erst alle normalen Regionen löschen
+            app.click_regions.clear();
+            app.click_regions.push((
+                Rect { x: area.x + q_width, y: content_y, width: yes_width, height: 1 },
+                ClickAction::ConfirmYes,
+            ));
+            app.click_regions.push((
+                Rect { x: area.x + q_width + yes_width + gap_width, y: content_y, width: no_width, height: 1 },
+                ClickAction::ConfirmNo,
+            ));
             return;
         }
     }
@@ -433,20 +472,49 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
         k("↑↓"), t(" nav  "), k("←→"), t(" focus"),
     ];
 
-    let actions: Vec<Span> = match app.current_tab {
+    let action_defs: Vec<(&str, &str, ClickAction)> = match app.current_tab {
         Tab::Sessions => vec![
-            k("Enter"), t(" resume  "), d("d"), t(" delete  "),
-            k("e"), t(" export  "), d("0"), t(" clean  "),
-            k("f"), t(" search  "), k("s"), t(" sort  "),
-            k("g"), t(" settings  "), k("h"), t(" help  "), k("q"), t(" quit"),
+            ("Enter", " resume  ", ClickAction::ResumeSession),
+            ("d", " delete  ", ClickAction::DeleteSession),
+            ("e", " export  ", ClickAction::ExportSession),
+            ("0", " clean  ", ClickAction::CleanZeroMessages),
+            ("f", " search  ", ClickAction::ToggleSearch),
+            ("s", " sort  ", ClickAction::ToggleSort),
+            ("g", " settings  ", ClickAction::OpenSettings),
+            ("h", " help  ", ClickAction::ToggleHelp),
+            ("q", " quit", ClickAction::Quit),
         ],
         Tab::Trash => vec![
-            k("Enter"), t(" restore  "), d("d"), t(" delete  "),
-            d("t"), t(" empty  "),
-            k("s"), t(" sort  "),
-            k("g"), t(" settings  "), k("h"), t(" help  "), k("q"), t(" quit"),
+            ("Enter", " restore  ", ClickAction::RestoreFromTrash),
+            ("d", " delete  ", ClickAction::DeleteSession),
+            ("t", " empty  ", ClickAction::EmptyTrash),
+            ("s", " sort  ", ClickAction::ToggleSort),
+            ("g", " settings  ", ClickAction::OpenSettings),
+            ("h", " help  ", ClickAction::ToggleHelp),
+            ("q", " quit", ClickAction::Quit),
         ],
     };
+
+    // Build spans for rendering and click regions simultaneously
+    let mut actions: Vec<Span> = Vec::new();
+    let content_y = area.y + 1; // Borders::TOP nimmt erste Zeile
+    // nav spans: "↑↓" + " nav  " + "←→" + " focus" + sep "  │  "
+    let nav_width: u16 = nav.iter().map(|s| s.content.chars().count() as u16).sum();
+    let sep_width = 5u16; // "  │  "
+    let mut x = area.x + nav_width + sep_width;
+
+    for (key, desc, click_action) in &action_defs {
+        let key_style = if *key == "d" || *key == "0" || *key == "t" { d(key) } else { k(key) };
+        actions.push(key_style);
+        actions.push(t(desc));
+        let kw = key.chars().count() as u16;
+        let dw = desc.chars().count() as u16;
+        app.click_regions.push((
+            Rect { x, y: content_y, width: kw + dw, height: area.height.saturating_sub(1) },
+            click_action.clone(),
+        ));
+        x += kw + dw;
+    }
 
     let mut spans = nav;
     spans.push(sep);
@@ -485,7 +553,7 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-fn draw_help_modal(f: &mut Frame, app: &App) {
+fn draw_help_modal(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let width = (area.width as f32 * 0.8).min(100.0) as u16;
     let height = (area.height as f32 * 0.8).min(40.0) as u16;
@@ -521,6 +589,9 @@ fn draw_help_modal(f: &mut Frame, app: &App) {
         .wrap(Wrap { trim: false });
 
     f.render_widget(help_widget, popup_area);
+
+    // Help-Modal: Keine Click-Regionen → click-outside in main.rs schließt das Modal
+    app.click_regions.clear();
 }
 
 fn parse_markdown_line(line: &str) -> Line<'_> {
@@ -678,7 +749,7 @@ fn parse_inline_formatting(text: String, base_style: Style) -> Vec<Span<'static>
     spans
 }
 
-fn draw_settings_modal(f: &mut Frame, app: &App) {
+fn draw_settings_modal(f: &mut Frame, app: &mut App) {
     let area = f.area();
     let width = (area.width as f32 * 0.6) as u16;
     let height = 7u16;
@@ -697,6 +768,11 @@ fn draw_settings_modal(f: &mut Frame, app: &App) {
 
     let inner = block.inner(popup_area);
 
+    let save_text = "  [Enter]";
+    let save_desc = " save  ";
+    let cancel_text = "[Esc]";
+    let cancel_desc = " cancel";
+
     let text = vec![
         Line::from(""),
         Line::from(vec![
@@ -710,10 +786,10 @@ fn draw_settings_modal(f: &mut Frame, app: &App) {
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  [Enter]", Style::default().fg(Color::Green)),
-            Span::raw(" save  "),
-            Span::styled("[Esc]", Style::default().fg(Color::Red)),
-            Span::raw(" cancel"),
+            Span::styled(save_text, Style::default().fg(Color::Green)),
+            Span::raw(save_desc),
+            Span::styled(cancel_text, Style::default().fg(Color::Red)),
+            Span::raw(cancel_desc),
         ]),
     ];
 
@@ -722,6 +798,20 @@ fn draw_settings_modal(f: &mut Frame, app: &App) {
     f.render_widget(Clear, popup_area);
     f.render_widget(block, popup_area);
     f.render_widget(paragraph, inner);
+
+    // Click-Regionen: Settings-Modal überschreibt alle anderen
+    app.click_regions.clear();
+    let btn_y = inner.y + 4; // 5. Zeile im Modal (index 4)
+    let save_width = (save_text.chars().count() + save_desc.chars().count()) as u16;
+    let cancel_width = (cancel_text.chars().count() + cancel_desc.chars().count()) as u16;
+    app.click_regions.push((
+        Rect { x: inner.x, y: btn_y, width: save_width, height: 1 },
+        ClickAction::SaveSettings,
+    ));
+    app.click_regions.push((
+        Rect { x: inner.x + save_width, y: btn_y, width: cancel_width, height: 1 },
+        ClickAction::CancelSettings,
+    ));
 }
 
 #[cfg(test)]
