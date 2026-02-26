@@ -3,7 +3,7 @@ mod common;
 use agent_session_manager::app::App;
 use agent_session_manager::commands;
 use agent_session_manager::store::SessionStore;
-use common::{create_fixture_session, TestEnv};
+use common::{create_fixture_session, create_fixture_session_with_title, TestEnv};
 
 fn load_sessions(env: &TestEnv) -> Vec<agent_session_manager::models::Session> {
     env.activate();
@@ -53,6 +53,144 @@ fn test_search_filters_sessions() {
     let filtered = app.filtered_sessions();
     assert_eq!(filtered.len(), 1);
     assert!(filtered[0].project_name.contains("alpha"));
+}
+
+// ─── CUSTOM TITLE / RENAME ───────────────────────────────────────────────────
+
+#[test]
+fn test_custom_title_loaded_from_jsonl() {
+    let env = TestEnv::new();
+    create_fixture_session_with_title(
+        &env.claude_dir,
+        "-title-project",
+        "uuid-title",
+        &[("user", "hello")],
+        Some("my-custom-name"),
+    );
+    let sessions = load_sessions(&env);
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].slug, Some("my-custom-name".to_string()));
+}
+
+#[test]
+fn test_session_without_custom_title_has_none() {
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-no-title",
+        "uuid-notitle",
+        &[("user", "hello")],
+    );
+    let sessions = load_sessions(&env);
+
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].slug, None);
+}
+
+#[test]
+fn test_search_finds_session_by_custom_title() {
+    let env = TestEnv::new();
+    create_fixture_session_with_title(
+        &env.claude_dir,
+        "-proj-a",
+        "uuid-a",
+        &[("user", "unrelated content")],
+        Some("findme-label"),
+    );
+    create_fixture_session(
+        &env.claude_dir,
+        "-proj-b",
+        "uuid-b",
+        &[("user", "other stuff")],
+    );
+    let sessions = load_sessions(&env);
+
+    let mut app = App::new(sessions, vec![]);
+    app.search_query = "findme".to_string();
+    let filtered = app.filtered_sessions();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].slug.as_deref(), Some("findme-label"));
+}
+
+#[test]
+fn test_rename_appends_custom_title_to_jsonl() {
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-rename-proj",
+        "uuid-rename",
+        &[("user", "hello")],
+    );
+    let sessions = load_sessions(&env);
+    let session = &sessions[0];
+
+    assert!(
+        session.jsonl_path.exists(),
+        "jsonl_path must point to existing file: {:?}",
+        session.jsonl_path
+    );
+
+    // Rename ausführen
+    commands::rename_session(session, "new-name").unwrap();
+
+    // JSONL-Datei prüfen — custom-title Zeile muss angehängt sein
+    let content = std::fs::read_to_string(&session.jsonl_path).unwrap();
+    assert!(content.contains("custom-title"), "JSONL should contain custom-title entry");
+    assert!(content.contains("new-name"), "JSONL should contain the new name");
+
+    // Neu laden — customTitle muss da sein
+    let sessions_after = load_sessions(&env);
+    assert_eq!(sessions_after[0].slug, Some("new-name".to_string()));
+}
+
+#[test]
+fn test_rename_prefills_existing_custom_title() {
+    let env = TestEnv::new();
+    create_fixture_session_with_title(
+        &env.claude_dir,
+        "-prefill-proj",
+        "uuid-prefill",
+        &[("user", "hello")],
+        Some("existing-title"),
+    );
+    let sessions = load_sessions(&env);
+
+    let mut app = App::new(sessions, vec![]);
+    app.open_rename();
+    assert_eq!(app.rename_input, "existing-title");
+}
+
+#[test]
+fn test_rename_prefills_empty_when_no_title() {
+    let env = TestEnv::new();
+    create_fixture_session(
+        &env.claude_dir,
+        "-noprefill",
+        "uuid-noprefill",
+        &[("user", "hello")],
+    );
+    let sessions = load_sessions(&env);
+
+    let mut app = App::new(sessions, vec![]);
+    app.open_rename();
+    assert_eq!(app.rename_input, "");
+}
+
+#[test]
+fn test_display_name_includes_custom_title() {
+    let env = TestEnv::new();
+    create_fixture_session_with_title(
+        &env.claude_dir,
+        "-display-proj",
+        "uuid-display",
+        &[("user", "hello")],
+        Some("my-label"),
+    );
+    let sessions = load_sessions(&env);
+
+    let name = sessions[0].display_name();
+    assert!(name.contains("my-label"), "display_name should contain custom title, got: {}", name);
 }
 
 // ─── UPDATE (Settings) ───────────────────────────────────────────────────────

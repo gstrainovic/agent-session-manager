@@ -138,6 +138,35 @@ fn handle_key_event(
     app: &mut App,
     key: event::KeyEvent,
 ) -> Option<io::Result<Option<(String, Option<String>)>>> {
+    if app.show_rename {
+        match key.code {
+            KeyCode::Enter => {
+                let new_name = app.rename_input.clone();
+                if let Some(session) = app.save_rename() {
+                    match commands::rename_session(&session, &new_name) {
+                        Ok(_) => {
+                            // Update in-memory session slug
+                            let id = session.id.clone();
+                            let slug = if new_name.is_empty() { None } else { Some(new_name.clone()) };
+                            for s in app.sessions.iter_mut().chain(app.trash.iter_mut()) {
+                                if s.id == id {
+                                    s.slug = slug.clone();
+                                }
+                            }
+                            app.set_status(format!("Renamed to: {}", new_name));
+                        }
+                        Err(_) => app.set_status("Rename failed".to_string()),
+                    }
+                }
+            }
+            KeyCode::Esc => app.cancel_rename(),
+            KeyCode::Char(c) => app.rename_add_char(c),
+            KeyCode::Backspace => app.rename_pop_char(),
+            _ => {}
+        }
+        return None;
+    }
+
     if app.show_settings {
         match key.code {
             KeyCode::Enter => app.save_settings(),
@@ -193,9 +222,7 @@ fn handle_key_event(
             app.switch_to_selected_session();
         }
         KeyCode::Char('r') if !app.show_search => {
-            if app.current_tab == crate::app::Tab::Sessions {
-                app.switch_to_selected_session();
-            }
+            app.open_rename();
         }
         KeyCode::Char('u') if !app.show_search => {
             app.restore_selected_from_trash();
@@ -299,6 +326,7 @@ fn handle_key_event(
             app.toggle_sort();
             let sort_name = match app.sort_field {
                 crate::app::SortField::Project => "project",
+                crate::app::SortField::Name => "name",
                 crate::app::SortField::Messages => "messages",
                 crate::app::SortField::Date => "date",
             };
@@ -447,6 +475,7 @@ fn dispatch_click_action(app: &mut App, action: crate::app::ClickAction) -> bool
                     app.toggle_sort();
                     let sort_name = match app.sort_field {
                         crate::app::SortField::Project => "project",
+                        crate::app::SortField::Name => "name",
                         crate::app::SortField::Messages => "messages",
                         crate::app::SortField::Date => "date",
                     };
@@ -457,6 +486,7 @@ fn dispatch_click_action(app: &mut App, action: crate::app::ClickAction) -> bool
                 ClickAction::Quit => return true,
                 ClickAction::RestoreFromTrash => app.restore_selected_from_trash(),
                 ClickAction::EmptyTrash => app.request_empty_trash(),
+                ClickAction::RenameSession => app.open_rename(),
                 _ => {} // Modal-Aktionen bereits oben behandelt
             }
         }
@@ -493,6 +523,8 @@ mod tests {
                 role: "user".to_string(),
                 content: "msg".to_string(),
             }],
+            jsonl_path: std::path::PathBuf::new(),
+            slug: None,
         }
     }
 
@@ -676,10 +708,10 @@ mod tests {
     fn test_mouse_click_command_bar_opens_settings() {
         let mut app = App::with_sessions(vec![]);
         render_frame(&mut app, 160, 40);
-        // "p preferences" startet bei x=76 (nav=16 + sep=5 + r+resume=10 + d+delete=10
-        // + e+export=10 + c+clear=9 + f+find=8 + s+sort=8 = 76), Breite=15
+        // "p preferences" startet bei x=87 (nav=16 + sep=5 + Enter+run=11 + r+rename=10
+        // + d+delete=10 + e+export=10 + c+clear=9 + f+find=8 + s+sort=8 = 87), Breite=15
         // cmd_y = 40-3 = 37 → row=38 liegt in height:3
-        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 85, 38));
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 90, 38));
         assert!(app.show_settings);
     }
 
@@ -1052,22 +1084,22 @@ mod tests {
         assert_eq!(app.selected_session_idx, 0);
     }
 
-    // --- 'r' resume ---
+    // --- 'r' rename ---
 
     #[test]
-    fn test_handle_r_resumes_in_sessions_tab() {
+    fn test_handle_r_opens_rename() {
         let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
         handle_key_event(&mut app, press(KeyCode::Char('r')));
-        assert!(app.resume_session_id.is_some());
+        assert!(app.show_rename);
     }
 
     #[test]
-    fn test_handle_r_noop_in_trash_tab() {
+    fn test_handle_r_opens_rename_in_trash_tab() {
         let mut app = App::with_sessions(vec![]);
         app.trash = vec![make_session("t1", "p1")];
         app.current_tab = Tab::Trash;
         handle_key_event(&mut app, press(KeyCode::Char('r')));
-        assert!(app.resume_session_id.is_none());
+        assert!(app.show_rename);
     }
 
     // --- 'u' restore from trash ---

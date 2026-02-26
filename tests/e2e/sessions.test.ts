@@ -99,7 +99,7 @@ test.describe('settings change export path', () => {
       terminal.getByText('Sessions', { strict: false }),
     ).toBeVisible()
     await expect(terminal).toMatchSnapshot()
-    terminal.write('g')
+    terminal.write('p')
     await expect(
       terminal.getByText('Export Path', { strict: false }),
     ).toBeVisible()
@@ -234,7 +234,7 @@ test.describe('restore from trash', () => {
     await expect(
       terminal.getByText('restore-me', { strict: false }),
     ).toBeVisible()
-    terminal.write('r')
+    terminal.write('u')
     await expect(
       terminal.getByText('Restored', { strict: false }),
     ).toBeVisible()
@@ -242,7 +242,153 @@ test.describe('restore from trash', () => {
   })
 })
 
-// ─── Test 7: sort changes order ──────────────────────────────────────────────
+// ─── Test 7: custom title shows in name column ──────────────────────────────
+
+const env7a = createTempEnv()
+createFixtureSession(env7a.claudeDir, '-named-project', 'uuid-n', [
+  ['user', 'hello'],
+], 'my-custom-label')
+
+test.describe('custom title shows in name column', () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env7a.claudeDir,
+      AGENT_CONFIG_DIR: env7a.configDir,
+    },
+    rows: 24,
+    columns: 100,
+  })
+
+  test('custom title visible in list and preview', async ({ terminal }) => {
+    await expect(
+      terminal.getByText('my-custom-label', { strict: false }),
+    ).toBeVisible()
+    await expect(
+      terminal.getByText('Name', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+  })
+})
+
+// ─── Test 8: search finds by custom title ───────────────────────────────────
+
+const env8a = createTempEnv()
+createFixtureSession(env8a.claudeDir, '-proj-x', 'uuid-x', [
+  ['user', 'unrelated'],
+], 'searchable-name')
+createFixtureSession(env8a.claudeDir, '-proj-y', 'uuid-y', [
+  ['user', 'also unrelated'],
+])
+
+test.describe('search finds by custom title', () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env8a.claudeDir,
+      AGENT_CONFIG_DIR: env8a.configDir,
+    },
+    rows: 24,
+    columns: 100,
+  })
+
+  test('search filters by custom title', async ({ terminal }) => {
+    await expect(
+      terminal.getByText('Sessions (2)', { strict: false }),
+    ).toBeVisible()
+    terminal.write('\x06') // Ctrl+F
+    await expect(
+      terminal.getByText('Search', { strict: false }),
+    ).toBeVisible()
+    terminal.write('searchable')
+    await expect(
+      terminal.getByText('Sessions (1)', { strict: false }),
+    ).toBeVisible()
+    await expect(
+      terminal.getByText('searchable-name', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+  })
+})
+
+// ─── Test 9: rename session via r key ────────────────────────────────────────
+
+const env9 = createTempEnv()
+createFixtureSession(env9.claudeDir, '-rename-target', 'uuid-rt', [
+  ['user', 'rename me'],
+])
+
+test.describe('rename session', () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env9.claudeDir,
+      AGENT_CONFIG_DIR: env9.configDir,
+    },
+    rows: 24,
+    columns: 100,
+  })
+
+  test('rename session and see new name', async ({ terminal }) => {
+    await expect(
+      terminal.getByText('rename-target', { strict: false }),
+    ).toBeVisible()
+    terminal.write('r')
+    await expect(
+      terminal.getByText('Rename', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+    terminal.write('e2e-new-name')
+    terminal.submit()
+    await expect(
+      terminal.getByText('Renamed to', { strict: false }),
+    ).toBeVisible()
+    // New name visible in list and preview
+    await expect(
+      terminal.getByText('e2e-new-name', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+  })
+})
+
+// ─── Test 10: rename prefills existing custom title ─────────────────────────
+
+const env10 = createTempEnv()
+createFixtureSession(env10.claudeDir, '-prefill-proj', 'uuid-pf', [
+  ['user', 'hi'],
+], 'existing-title')
+
+test.describe('rename prefills existing title', () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: env10.claudeDir,
+      AGENT_CONFIG_DIR: env10.configDir,
+    },
+    rows: 24,
+    columns: 100,
+  })
+
+  test('rename dialog shows existing custom title', async ({ terminal }) => {
+    await expect(
+      terminal.getByText('existing-title', { strict: false }),
+    ).toBeVisible()
+    terminal.write('r')
+    await expect(
+      terminal.getByText('Rename', { strict: false }),
+    ).toBeVisible()
+    await expect(
+      terminal.getByText('existing-title', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+  })
+})
+
+// ─── Test 11: sort changes order ────────────────────────────────────────────
 
 const env7 = createTempEnv()
 createFixtureSession(env7.claudeDir, '-zzz-project', 'uuid-z', [

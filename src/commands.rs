@@ -4,6 +4,24 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+/// Renames a session by appending a custom-title entry to the JSONL file.
+/// This matches how Claude Code's /rename command works.
+pub fn rename_session(session: &Session, new_name: &str) -> Result<()> {
+    let entry = serde_json::json!({
+        "type": "custom-title",
+        "customTitle": new_name,
+        "sessionId": session.id,
+    });
+    // Ensure newline separator even if file doesn't end with one
+    let content = fs::read_to_string(&session.jsonl_path)?;
+    let prefix = if content.ends_with('\n') { "" } else { "\n" };
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(&session.jsonl_path)?;
+    write!(file, "{}{}\n", prefix, entry.to_string())?;
+    Ok(())
+}
+
 pub fn delete_session(_session: &Session) -> Result<()> {
     let trash_dir = dirs::home_dir().expect("home dir").join(".claude/trash");
     fs::create_dir_all(&trash_dir)?;
@@ -71,6 +89,8 @@ mod tests {
                     content: "Hi there".to_string(),
                 },
             ],
+            jsonl_path: std::path::PathBuf::new(),
+            slug: None,
         }
     }
 

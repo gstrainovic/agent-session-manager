@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -10,6 +11,10 @@ pub struct Session {
     pub size: u64,
     pub total_entries: usize,
     pub messages: Vec<Message>,
+    #[serde(skip)]
+    pub jsonl_path: PathBuf,
+    #[serde(skip)]
+    pub slug: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +40,8 @@ impl Session {
             size: 0,
             total_entries: 0,
             messages: Vec::new(),
+            jsonl_path: PathBuf::new(),
+            slug: None,
         }
     }
 
@@ -44,8 +51,28 @@ impl Session {
         } else {
             &self.id
         };
-        format!("{} ({})", self.project_name, short_id)
+        if let Some(slug) = &self.slug {
+            format!("{} [{}] ({})", self.project_name, slug, short_id)
+        } else {
+            format!("{} ({})", self.project_name, short_id)
+        }
     }
+}
+
+/// Extrahiert den customTitle aus JSONL-Inhalt (manueller Rename via Claude Code /rename).
+pub fn extract_custom_title(content: &str) -> Option<String> {
+    for line in content.lines() {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+            if json.get("type").and_then(|t| t.as_str()) == Some("custom-title") {
+                if let Some(title) = json.get("customTitle").and_then(|s| s.as_str()) {
+                    if !title.is_empty() {
+                        return Some(title.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn count_jsonl_entries(content: &str) -> usize {
@@ -135,6 +162,38 @@ mod tests {
             "/home/g/auto-service".to_string(),
         );
         assert_eq!(session.display_name(), "auto-service (abcdef12)");
+    }
+
+    #[test]
+    fn test_display_name_with_slug() {
+        let mut session = Session::new(
+            "abcdef12-3456-7890-abcd-ef1234567890".to_string(),
+            "/home/g/auto-service".to_string(),
+        );
+        session.slug = Some("mein-label".to_string());
+        assert_eq!(session.display_name(), "auto-service [mein-label] (abcdef12)");
+    }
+
+    #[test]
+    fn test_extract_custom_title_finds_title() {
+        let content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"x"}
+{"type":"custom-title","customTitle":"my-name","sessionId":"abc"}
+"#;
+        assert_eq!(extract_custom_title(content), Some("my-name".to_string()));
+    }
+
+    #[test]
+    fn test_extract_custom_title_returns_none_when_absent() {
+        let content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"x"}
+"#;
+        assert_eq!(extract_custom_title(content), None);
+    }
+
+    #[test]
+    fn test_extract_custom_title_skips_empty() {
+        let content = r#"{"type":"custom-title","customTitle":"","sessionId":"abc"}
+"#;
+        assert_eq!(extract_custom_title(content), None);
     }
 
     #[test]

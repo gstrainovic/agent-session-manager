@@ -20,6 +20,7 @@ pub enum FocusPanel {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortField {
     Project,
+    Name,
     Messages,
     Date,
 }
@@ -53,6 +54,7 @@ pub enum ClickAction {
     Quit,
     RestoreFromTrash,
     EmptyTrash,
+    RenameSession,
     SaveSettings,
     CancelSettings,
     ConfirmYes,
@@ -79,6 +81,8 @@ pub struct App {
     pub help_scroll: u16,
     pub show_settings: bool,
     pub settings_input: String,
+    pub show_rename: bool,
+    pub rename_input: String,
     pub config: AppConfig,
     pub list_table_state: TableState,
     pub terminal_size: (u16, u16),
@@ -108,6 +112,8 @@ impl App {
             help_scroll: 0,
             show_settings: false,
             settings_input: String::new(),
+            show_rename: false,
+            rename_input: String::new(),
             config: AppConfig::load(),
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
@@ -137,6 +143,8 @@ impl App {
             help_scroll: 0,
             show_settings: false,
             settings_input: String::new(),
+            show_rename: false,
+            rename_input: String::new(),
             config: AppConfig::default(),
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
@@ -280,6 +288,10 @@ impl App {
                 .filter(|s| {
                     s.id.to_lowercase().contains(&q)
                         || s.project_name.to_lowercase().contains(&q)
+                        || s.slug
+                            .as_deref()
+                            .map(|sl| sl.to_lowercase().contains(&q))
+                            .unwrap_or(false)
                         || s.messages
                             .iter()
                             .any(|m| m.content.to_lowercase().contains(&q))
@@ -290,6 +302,7 @@ impl App {
         filtered.sort_by(|a, b| {
             let ordering = match self.sort_field {
                 SortField::Project => a.project_name.cmp(&b.project_name),
+                SortField::Name => a.slug.cmp(&b.slug),
                 SortField::Messages => a.messages.len().cmp(&b.messages.len()),
                 SortField::Date => a.updated_at.cmp(&b.updated_at),
             };
@@ -305,7 +318,8 @@ impl App {
 
     pub fn toggle_sort(&mut self) {
         self.sort_field = match self.sort_field {
-            SortField::Project => SortField::Messages,
+            SortField::Project => SortField::Name,
+            SortField::Name => SortField::Messages,
             SortField::Messages => SortField::Date,
             SortField::Date => SortField::Project,
         };
@@ -599,6 +613,33 @@ impl App {
         self.settings_input.pop();
     }
 
+    pub fn open_rename(&mut self) {
+        let current_name = self
+            .get_selected_session()
+            .map(|s| s.slug.clone().unwrap_or_default())
+            .unwrap_or_default();
+        self.rename_input = current_name;
+        self.show_rename = true;
+    }
+
+    pub fn save_rename(&mut self) -> Option<crate::models::Session> {
+        self.show_rename = false;
+        self.get_selected_session().cloned()
+    }
+
+    pub fn cancel_rename(&mut self) {
+        self.show_rename = false;
+        self.rename_input.clear();
+    }
+
+    pub fn rename_add_char(&mut self, c: char) {
+        self.rename_input.push(c);
+    }
+
+    pub fn rename_pop_char(&mut self) {
+        self.rename_input.pop();
+    }
+
     pub fn set_status(&mut self, message: String) {
         self.status_message = Some(message);
         self.status_message_time = Some(Instant::now());
@@ -632,6 +673,8 @@ mod tests {
                 role: "user".to_string(),
                 content: format!("msg in {}", id),
             }],
+            jsonl_path: std::path::PathBuf::new(),
+            slug: None,
         }
     }
 
@@ -703,6 +746,85 @@ mod tests {
         let filtered = app.filtered_sessions();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "s2");
+    }
+
+    #[test]
+    fn test_search_filters_by_slug() {
+        let mut s1 = make_session("s1", "proj1");
+        s1.slug = Some("delme".to_string());
+        let s2 = make_session("s2", "proj2");
+        let mut app = App::with_sessions(vec![s1, s2]);
+        app.search_query = "delme".to_string();
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "s1");
+    }
+
+    #[test]
+    fn test_open_rename_prefills_custom_title() {
+        let mut s1 = make_session("s1", "proj1");
+        s1.slug = Some("my-title".to_string());
+        let mut app = App::with_sessions(vec![s1]);
+        app.open_rename();
+        assert_eq!(app.rename_input, "my-title");
+    }
+
+    #[test]
+    fn test_open_rename_prefills_empty_when_no_title() {
+        let mut app = App::with_sessions(vec![make_session("s1", "proj1")]);
+        app.open_rename();
+        assert_eq!(app.rename_input, "");
+    }
+
+    #[test]
+    fn test_sort_by_name() {
+        let mut s1 = make_session("s1", "proj");
+        s1.slug = Some("beta".to_string());
+        let mut s2 = make_session("s2", "proj");
+        s2.slug = Some("alpha".to_string());
+        let mut app = App::with_sessions(vec![s1, s2]);
+        app.sort_field = SortField::Name;
+        app.sort_direction = crate::app::SortDirection::Ascending;
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered[0].slug.as_deref(), Some("alpha"));
+        assert_eq!(filtered[1].slug.as_deref(), Some("beta"));
+    }
+
+    #[test]
+    fn test_display_name_shows_custom_title() {
+        let mut s = make_session("abcdef12-long-id", "my-project");
+        s.slug = Some("my-label".to_string());
+        assert!(s.display_name().contains("my-label"));
+    }
+
+    #[test]
+    fn test_display_name_without_custom_title() {
+        let s = make_session("abcdef12-long-id", "my-project");
+        assert!(!s.display_name().contains('['));
+        assert!(s.display_name().contains("abcdef12"));
+    }
+
+    #[test]
+    fn test_custom_title_visible_in_filtered_sessions() {
+        let mut s1 = make_session("s1", "proj1");
+        s1.slug = Some("visible-name".to_string());
+        let app = App::with_sessions(vec![s1]);
+        let filtered = app.filtered_sessions();
+        assert_eq!(filtered[0].slug.as_deref(), Some("visible-name"));
+    }
+
+    #[test]
+    fn test_sort_none_titles_come_first_ascending() {
+        let mut s1 = make_session("s1", "proj");
+        s1.slug = Some("zebra".to_string());
+        let s2 = make_session("s2", "proj"); // slug = None
+        let mut app = App::with_sessions(vec![s1, s2]);
+        app.sort_field = SortField::Name;
+        app.sort_direction = crate::app::SortDirection::Ascending;
+        let filtered = app.filtered_sessions();
+        // None < Some, so s2 (None) comes first
+        assert_eq!(filtered[0].slug, None);
+        assert_eq!(filtered[1].slug.as_deref(), Some("zebra"));
     }
 
     #[test]
@@ -1109,6 +1231,8 @@ mod tests {
         assert_eq!(app.sort_field, SortField::Date);
         app.toggle_sort();
         assert_eq!(app.sort_field, SortField::Project);
+        app.toggle_sort();
+        assert_eq!(app.sort_field, SortField::Name);
         app.toggle_sort();
         assert_eq!(app.sort_field, SortField::Messages);
         app.toggle_sort();

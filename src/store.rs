@@ -1,4 +1,4 @@
-use crate::models::{parse_jsonl_messages, Session};
+use crate::models::{extract_custom_title, parse_jsonl_messages, Session};
 use anyhow::{Context, Result};
 use rayon::prelude::*;
 use std::fs;
@@ -222,6 +222,7 @@ impl SessionStore {
         let content = fs::read_to_string(path)?;
         let total_entries = crate::models::count_jsonl_entries(&content);
         let messages = parse_jsonl_messages(&content);
+        let slug = extract_custom_title(&content);
 
         Ok(Session {
             id: session_id,
@@ -232,6 +233,8 @@ impl SessionStore {
             size: file_size,
             total_entries,
             messages,
+            jsonl_path: path.to_path_buf(),
+            slug,
         })
     }
 
@@ -334,6 +337,39 @@ mod tests {
         let store = SessionStore::with_base(PathBuf::from("/tmp/nonexistent-test-dir-xyz"));
         let sessions = store.load_sessions().unwrap();
         assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_loads_custom_title_from_jsonl() {
+        let (tmp, store) = create_test_store();
+
+        let project_dir = tmp.path().join("projects/-home-g-myproject");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let jsonl_content = r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"a1"}
+{"type":"custom-title","customTitle":"my-title","sessionId":"abc-123"}
+"#;
+        fs::write(project_dir.join("abc-123.jsonl"), jsonl_content).unwrap();
+
+        let sessions = store.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].slug, Some("my-title".to_string()));
+    }
+
+    #[test]
+    fn test_slug_is_none_when_no_custom_title() {
+        let (tmp, store) = create_test_store();
+
+        let project_dir = tmp.path().join("projects/-home-g-myproject");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let jsonl_content =
+            r#"{"type":"user","message":{"role":"user","content":"hello"},"uuid":"a1"}"#;
+        fs::write(project_dir.join("no-slug.jsonl"), jsonl_content).unwrap();
+
+        let sessions = store.load_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].slug, None);
     }
 
     #[test]

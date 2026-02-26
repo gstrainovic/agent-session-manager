@@ -18,6 +18,7 @@ export function createFixtureSession(
   projectSlug: string,
   sessionId: string,
   messages: Array<[string, string]>,
+  customTitle?: string,
 ) {
   const sessionsDir = path.join(claudeDir, 'projects', projectSlug)
   fs.mkdirSync(sessionsDir, { recursive: true })
@@ -29,9 +30,12 @@ export function createFixtureSession(
         : `"${content}"`
     return `{"type":"${type_}","message":{"role":"${role}","content":${contentJson}},"uuid":"test-uuid-${String(i).padStart(3, '0')}"}`
   })
+  if (customTitle) {
+    lines.push(`{"type":"custom-title","customTitle":"${customTitle}","sessionId":"${sessionId}"}`)
+  }
   fs.writeFileSync(
     path.join(sessionsDir, `${sessionId}.jsonl`),
-    lines.join('\n'),
+    lines.join('\n') + '\n',
   )
 }
 

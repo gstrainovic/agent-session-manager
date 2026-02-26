@@ -55,6 +55,17 @@ pub fn create_fixture_session(
     session_id: &str,
     messages: &[(&str, &str)],
 ) {
+    create_fixture_session_with_title(claude_dir, project_slug, session_id, messages, None);
+}
+
+/// Wie `create_fixture_session`, aber mit optionalem customTitle.
+pub fn create_fixture_session_with_title(
+    claude_dir: &Path,
+    project_slug: &str,
+    session_id: &str,
+    messages: &[(&str, &str)],
+    custom_title: Option<&str>,
+) {
     let sessions_dir = claude_dir
         .join("projects")
         .join(project_slug);
@@ -77,6 +88,15 @@ pub fn create_fixture_session(
         ));
     }
 
+    if let Some(title) = custom_title {
+        lines.push(format!(
+            r#"{{"type":"custom-title","customTitle":"{}","sessionId":"{}"}}"#,
+            title, session_id
+        ));
+    }
+
     let path = sessions_dir.join(format!("{}.jsonl", session_id));
-    std::fs::write(path, lines.join("\n")).unwrap();
+    let mut content = lines.join("\n");
+    content.push('\n'); // JSONL files need trailing newline
+    std::fs::write(path, content).unwrap();
 }

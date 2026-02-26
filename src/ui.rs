@@ -85,6 +85,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_settings {
         draw_settings_modal(f, app);
     }
+
+    if app.show_rename {
+        draw_rename_modal(f, app);
+    }
 }
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &mut App) {
@@ -150,51 +154,36 @@ fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
         crate::app::SortDirection::Descending => "▼",
     };
 
-    let project_header = if app.sort_field == crate::app::SortField::Project {
-        format!("Project {}", sort_arrow)
-    } else {
-        "Project".to_string()
-    };
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
 
-    let date_header = if app.sort_field == crate::app::SortField::Date {
-        format!("Date {}", sort_arrow)
-    } else {
-        "Date".to_string()
-    };
-
-    let msgs_header = if app.sort_field == crate::app::SortField::Messages {
-        format!("Msgs {}", sort_arrow)
-    } else {
-        "Msgs".to_string()
+    let make_header = |label: &str, field: crate::app::SortField| -> Cell {
+        let text = if app.sort_field == field {
+            format!("{} {}", label, sort_arrow)
+        } else {
+            label.to_string()
+        };
+        Cell::from(text).style(header_style)
     };
 
     let header = Row::new(vec![
-        Cell::from(project_header).style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from(date_header).style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from(msgs_header).style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
+        make_header("Project", crate::app::SortField::Project),
+        make_header("Name", crate::app::SortField::Name),
+        make_header("Date", crate::app::SortField::Date),
+        make_header("Msgs", crate::app::SortField::Messages),
     ])
     .bottom_margin(0);
 
     let rows: Vec<Row> = filtered
         .iter()
         .map(|session| {
-            // Format date as yyyy-mm-dd hh:mm
             let formatted_date = format_datetime(&session.updated_at);
+            let name = session.slug.as_deref().unwrap_or("");
 
             Row::new(vec![
                 Cell::from(session.project_name.as_str()),
+                Cell::from(name),
                 Cell::from(formatted_date),
                 Cell::from(format!("{}", session.messages.len())),
             ])
@@ -208,9 +197,10 @@ fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
     };
 
     let widths = [
-        Constraint::Min(12),
+        Constraint::Min(10),
+        Constraint::Min(8),
         Constraint::Length(16),
-        Constraint::Length(7),
+        Constraint::Length(5),
     ];
 
     let table = Table::new(rows, widths)
@@ -273,6 +263,10 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
             Line::from(vec![
                 Span::styled("Session: ", Style::default().fg(Color::Yellow)),
                 Span::raw(&session.id),
+            ]),
+            Line::from(vec![
+                Span::styled("Label:   ", Style::default().fg(Color::Cyan)),
+                Span::raw(session.slug.as_deref().unwrap_or("—")),
             ]),
             Line::from(vec![
                 Span::styled("Updated: ", Style::default().fg(Color::Yellow)),
@@ -474,7 +468,8 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
 
     let action_defs: Vec<(&str, &str, ClickAction)> = match app.current_tab {
         Tab::Sessions => vec![
-            ("r", " resume  ", ClickAction::ResumeSession),
+            ("Enter", " run  ", ClickAction::ResumeSession),
+            ("r", " rename  ", ClickAction::RenameSession),
             ("d", " delete  ", ClickAction::DeleteSession),
             ("e", " export  ", ClickAction::ExportSession),
             ("c", " clear  ", ClickAction::CleanZeroMessages),
@@ -486,6 +481,7 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
         ],
         Tab::Trash => vec![
             ("u", " undo  ", ClickAction::RestoreFromTrash),
+            ("r", " rename  ", ClickAction::RenameSession),
             ("e", " empty trash ", ClickAction::EmptyTrash),
             ("f", " find  ", ClickAction::ToggleSearch),
             ("s", " sort  ", ClickAction::ToggleSort),
@@ -813,6 +809,50 @@ fn draw_settings_modal(f: &mut Frame, app: &mut App) {
     ));
 }
 
+fn draw_rename_modal(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+    let width = (area.width as f32 * 0.6) as u16;
+    let height = 7u16;
+
+    let popup_area = Rect {
+        x: (area.width.saturating_sub(width)) / 2,
+        y: (area.height.saturating_sub(height)) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::default()
+        .title(" Rename Session ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(popup_area);
+
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  New name: ", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                format!("  {}_", app.rename_input),
+                Style::default().fg(Color::White),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  [Enter]", Style::default().fg(Color::Green)),
+            Span::raw(" save  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Red)),
+            Span::raw(" cancel"),
+        ]),
+    ];
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(block, popup_area);
+    f.render_widget(Paragraph::new(text), inner);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,6 +871,8 @@ mod tests {
             size: 1024,
             total_entries: messages.len() + 3,
             messages,
+            jsonl_path: std::path::PathBuf::new(),
+            slug: None,
         }
     }
 
@@ -961,7 +1003,8 @@ mod tests {
     fn test_commands_bar_shows_keybindings() {
         let mut app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
         let output = render_to_string(&mut app, 100, 20);
-        assert!(output.contains("resume"), "Should show resume command");
+        assert!(output.contains("run"), "Should show run command");
+        assert!(output.contains("rename"), "Should show rename command");
         assert!(output.contains("elete"), "Should show delete command");
         assert!(output.contains("find"), "Should show find command");
     }
@@ -1017,6 +1060,25 @@ mod tests {
         // Preview should show both messages count and total entries
         assert!(output.contains("Messages:"), "Should show Messages label");
         assert!(output.contains("Entries:"), "Should show Entries label");
+    }
+
+    #[test]
+    fn test_name_column_shows_custom_title() {
+        let mut s = make_session("abc12345-6789", "my-project", vec![make_msg("user", "hi")]);
+        s.slug = Some("my-label".to_string());
+        let mut app = App::with_sessions(vec![s]);
+        let output = render_to_string(&mut app, 120, 20);
+        assert!(output.contains("my-label"), "Name column should show custom title");
+        assert!(output.contains("Name"), "Header should have Name column");
+    }
+
+    #[test]
+    fn test_preview_shows_custom_title_label() {
+        let mut s = make_session("abc12345-6789", "my-project", vec![make_msg("user", "hi")]);
+        s.slug = Some("renamed-session".to_string());
+        let mut app = App::with_sessions(vec![s]);
+        let output = render_to_string(&mut app, 120, 20);
+        assert!(output.contains("renamed-session"), "Preview should show custom title as label");
     }
 
     #[test]

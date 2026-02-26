@@ -49,9 +49,9 @@ test.describe('mouse click via SGR escape sequence', () => {
     terminal.write('\x1b[<0;25;1M') // Mouse Down (linke Maustaste)
     terminal.write('\x1b[<0;25;1m') // Mouse Up   (linke Maustaste)
 
-    // Prüfen: Trash-Tab ist aktiv (Kommandoleiste zeigt "Enter restore")
+    // Prüfen: Trash-Tab ist aktiv (Kommandoleiste zeigt "Enter run")
     await expect(
-      terminal.getByText('Enter restore', { strict: false }),
+      terminal.getByText('Enter run', { strict: false }),
     ).toBeVisible({ timeout: 2000 })
     await expect(terminal).toMatchSnapshot()
   })
@@ -138,14 +138,14 @@ test.describe('SGR PoC: Settings via Command-Bar Mausklick', () => {
     columns: 120,
   })
 
-  test('Klick auf "g settings" in Command-Bar öffnet Settings-Modal', async ({ terminal }) => {
+  test('Klick auf "p preferences" in Command-Bar öffnet Settings-Modal', async ({ terminal }) => {
     await expect(terminal.getByText('Sessions', { strict: false })).toBeVisible()
 
     // Command-Bar letzte Zeile (row=24, 1-basiert bei 24 rows), 120 Spalten.
-    // "↑↓ nav  ←→ focus  │  Enter resume  d delete  e export  0 clean  f search  s sort  g settings  h help  q quit"
-    // Position von "g": col=84 (1-basiert)
-    terminal.write('\x1b[<0;84;24M')
-    terminal.write('\x1b[<0;84;24m')
+    // "↑↓ nav  ←→ focus  │  Enter run  r rename  d delete  e export  c clear  f find  s sort  p preferences  h help  q quit"
+    // Position von "p preferences": col~92 (1-basiert)
+    terminal.write('\x1b[<0;94;24M')
+    terminal.write('\x1b[<0;94;24m')
 
     await expect(
       terminal.getByText('Export Path', { strict: false }),
