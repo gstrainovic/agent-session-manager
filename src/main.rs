@@ -7,7 +7,7 @@ mod ui;
 
 use app::App;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, MouseButton, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -18,7 +18,7 @@ use std::io;
 fn main() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, crossterm::event::EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let res = run_app(&mut terminal, app);
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, crossterm::event::DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     match res {
@@ -97,7 +97,7 @@ fn run_app<B: Backend>(
     mut app: App,
 ) -> io::Result<Option<(String, Option<String>)>> {
     loop {
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
         app.clear_expired_status();
 
         // Check if we should resume a session
@@ -110,12 +110,16 @@ fn run_app<B: Backend>(
         if crossterm::event::poll(std::time::Duration::from_millis(250))? {
             // Drain all pending events before next draw to avoid rendering artifacts
             loop {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == event::KeyEventKind::Press {
+                match event::read()? {
+                    Event::Key(key) if key.kind == event::KeyEventKind::Press => {
                         if let Some(result) = handle_key_event(&mut app, key) {
                             return result;
                         }
                     }
+                    Event::Mouse(mouse) => {
+                        handle_mouse_event(&mut app, mouse);
+                    }
+                    _ => {}
                 }
                 // Check if more events are immediately available
                 if !crossterm::event::poll(std::time::Duration::from_millis(0))? {
@@ -314,6 +318,23 @@ fn handle_key_event(
     None
 }
 
+fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => match app.focus {
+            crate::app::FocusPanel::List => app.select_prev(),
+            crate::app::FocusPanel::Preview => app.preview_scroll_up(3),
+        },
+        MouseEventKind::ScrollDown => match app.focus {
+            crate::app::FocusPanel::List => app.select_next(),
+            crate::app::FocusPanel::Preview => app.preview_scroll_down(3),
+        },
+        MouseEventKind::Down(MouseButton::Left) => {
+            app.handle_mouse_click(mouse.column, mouse.row);
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,6 +455,77 @@ mod tests {
         let mut app = App::with_sessions(vec![]);
         handle_key_event(&mut app, press(KeyCode::Char('2')));
         assert_eq!(app.current_tab, crate::app::Tab::Trash);
+    }
+
+    fn mouse(kind: MouseEventKind, col: u16, row: u16) -> event::MouseEvent {
+        event::MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: event::KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn test_mouse_scroll_down_selects_next() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 0, 10));
+        assert_eq!(app.selected_session_idx, 1);
+    }
+
+    #[test]
+    fn test_mouse_scroll_up_selects_prev() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.selected_session_idx = 1;
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 0, 10));
+        assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_mouse_click_selects_session_row() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+            make_session("s3", "p3"),
+        ]);
+        app.terminal_size = (160, 40);
+        // row=6 → list_data_row=1 → sessions[offset+1]
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 6));
+        assert_eq!(app.selected_session_idx, 1);
+    }
+
+    #[test]
+    fn test_mouse_click_tab_bar_switches_to_trash() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        // col=100 > 35% of 160 (=56) → Trash tab
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 100, 1));
+        assert_eq!(app.current_tab, crate::app::Tab::Trash);
+    }
+
+    #[test]
+    fn test_mouse_click_tab_bar_switches_to_sessions() {
+        let mut app = App::with_sessions(vec![]);
+        app.current_tab = crate::app::Tab::Trash;
+        app.terminal_size = (160, 40);
+        // col=10 < 35% of 160 (=56) → Sessions tab
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 10, 1));
+        assert_eq!(app.current_tab, crate::app::Tab::Sessions);
+    }
+
+    #[test]
+    fn test_mouse_scroll_in_preview_scrolls_content() {
+        let mut app = App::with_sessions(vec![]);
+        app.focus = crate::app::FocusPanel::Preview;
+        app.preview_scroll = 10;
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 100, 10));
+        assert!(app.preview_scroll < 10);
     }
 
     #[test]

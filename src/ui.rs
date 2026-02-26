@@ -43,7 +43,7 @@ pub fn draw_loading(f: &mut Frame, loaded: usize, total: usize) {
     f.render_widget(gauge, horizontal[1]);
 }
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -63,6 +63,10 @@ pub fn draw(f: &mut Frame, app: &App) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(chunks[1]);
+
+    // terminal_size für Maus-Klick-Berechnung aktuell halten
+    let area = f.area();
+    app.terminal_size = (area.width, area.height);
 
     draw_list(f, content_chunks[0], app);
     draw_preview(f, content_chunks[1], app);
@@ -122,8 +126,9 @@ fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(tabs_widget, area);
 }
 
-fn draw_list(f: &mut Frame, area: Rect, app: &App) {
-    let filtered = app.filtered_sessions();
+fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
+    // Clone to release borrow on app before we need &mut app.list_table_state
+    let filtered: Vec<_> = app.filtered_sessions().into_iter().cloned().collect();
 
     let sort_arrow = match app.sort_direction {
         crate::app::SortDirection::Ascending => "▲",
@@ -212,11 +217,25 @@ fn draw_list(f: &mut Frame, area: Rect, app: &App) {
                 .add_modifier(Modifier::BOLD),
         );
 
-    // Create TableState and select current index for automatic scrolling
-    let mut state = ratatui::widgets::TableState::default();
-    state.select(Some(app.selected_session_idx));
+    let selected = app.selected_session_idx;
+    let total = filtered.len();
+    app.list_table_state.select(Some(selected));
+    f.render_stateful_widget(table, area, &mut app.list_table_state);
 
-    f.render_stateful_widget(table, area, &mut state);
+    // Scrollbar rechts neben der Liste
+    let mut scrollbar_state = ScrollbarState::new(total).position(selected);
+    f.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .style(Style::default().fg(if app.focus == FocusPanel::List {
+                Color::Green
+            } else {
+                Color::DarkGray
+            })),
+        area,
+        &mut scrollbar_state,
+    );
 }
 
 fn format_datetime(iso_string: &str) -> String {
@@ -710,35 +729,35 @@ mod tests {
         }
     }
 
-    fn render_to_string(app: &App, width: u16, height: u16) -> String {
+    fn render_to_string(app: &mut App, width: u16, height: u16) -> String {
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, app)).unwrap();
         terminal.backend().to_string()
     }
 
     #[test]
     fn test_renders_session_list_header() {
-        let app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
-        let output = render_to_string(&app, 100, 20);
+        let mut app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("Sessions"), "Should show Sessions tab");
         assert!(output.contains("my-project"), "Should show project name");
     }
 
     #[test]
     fn test_renders_message_count() {
-        let app = App::with_sessions(vec![make_session(
+        let mut app = App::with_sessions(vec![make_session(
             "abc12345-6789",
             "test-proj",
             vec![make_msg("user", "Hello"), make_msg("assistant", "Hi there")],
         )]);
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("2"), "Should show message count of 2");
     }
 
     #[test]
     fn test_renders_preview_for_selected_session() {
-        let app = App::with_sessions(vec![make_session(
+        let mut app = App::with_sessions(vec![make_session(
             "abc12345-6789",
             "my-project",
             vec![
@@ -746,7 +765,7 @@ mod tests {
                 make_msg("assistant", "Use TestBackend from ratatui"),
             ],
         )]);
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("Preview"), "Should show Preview panel");
         assert!(
             output.contains("How do I test TUIs"),
@@ -756,8 +775,8 @@ mod tests {
 
     #[test]
     fn test_renders_empty_state() {
-        let app = App::with_sessions(vec![]);
-        let output = render_to_string(&app, 100, 20);
+        let mut app = App::with_sessions(vec![]);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("Sessions (0)"), "Should show 0 sessions");
         assert!(
             output.contains("No session selected"),
@@ -781,7 +800,7 @@ mod tests {
         ]);
 
         // Initially first session selected
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(
             output.contains("First message"),
             "Should show first session preview"
@@ -789,7 +808,7 @@ mod tests {
 
         // Move selection down
         app.select_next();
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(
             output.contains("Second message"),
             "Should show second session preview"
@@ -802,19 +821,19 @@ mod tests {
         app.show_search = true;
         app.search_query = "test".to_string();
 
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("Search"), "Should show search modal");
         assert!(output.contains("test"), "Should show search query");
     }
 
     #[test]
     fn test_truncated_session_id_in_list() {
-        let app = App::with_sessions(vec![make_session(
+        let mut app = App::with_sessions(vec![make_session(
             "abcdef12-3456-7890-abcd-ef1234567890",
             "proj",
             vec![],
         )]);
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(
             output.contains("abcdef12"),
             "List should show truncated ID (first 8 chars)"
@@ -828,8 +847,8 @@ mod tests {
 
     #[test]
     fn test_commands_bar_shows_keybindings() {
-        let app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
-        let output = render_to_string(&app, 100, 20);
+        let mut app = App::with_sessions(vec![make_session("abc12345-6789", "my-project", vec![])]);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("resume"), "Should show resume command");
         assert!(output.contains("elete"), "Should show delete command");
         assert!(output.contains("search"), "Should show search command");
@@ -865,24 +884,24 @@ mod tests {
 
     #[test]
     fn test_preview_with_problematic_unicode_renders_clean() {
-        let app = App::with_sessions(vec![make_session(
+        let mut app = App::with_sessions(vec![make_session(
             "abc12345-6789",
             "project",
             vec![make_msg("user", "⛁ Active 30+ ⛁ files ⛶ custom stack")],
         )]);
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         assert!(!output.contains('⛁'), "Preview should not contain ⛁");
         assert!(output.contains("Active 30+"), "Should keep normal text");
     }
 
     #[test]
     fn test_preview_shows_entries_and_messages() {
-        let app = App::with_sessions(vec![make_session(
+        let mut app = App::with_sessions(vec![make_session(
             "abc12345-6789",
             "my-project",
             vec![make_msg("user", "Hello")],
         )]);
-        let output = render_to_string(&app, 100, 20);
+        let output = render_to_string(&mut app, 100, 20);
         // Preview should show both messages count and total entries
         assert!(output.contains("Messages:"), "Should show Messages label");
         assert!(output.contains("Entries:"), "Should show Entries label");
@@ -890,7 +909,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_initial_render() {
-        let app = App::with_sessions(vec![
+        let mut app = App::with_sessions(vec![
             make_session(
                 "abc12345-6789",
                 "my-project",
@@ -907,7 +926,7 @@ mod tests {
         ]);
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 
@@ -921,7 +940,7 @@ mod tests {
         app.open_settings();
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 
@@ -935,7 +954,7 @@ mod tests {
         app.toggle_help();
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 
@@ -949,7 +968,7 @@ mod tests {
         app.request_delete_confirmation();
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 
@@ -1209,7 +1228,7 @@ mod tests {
         app.current_tab = crate::app::Tab::Trash;
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 
@@ -1233,7 +1252,7 @@ mod tests {
         app.search_query = "alpha".to_string();
         let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
 }

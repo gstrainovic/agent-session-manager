@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::models::Session;
 use crate::store::SessionStore;
+use ratatui::widgets::TableState;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -57,6 +58,8 @@ pub struct App {
     pub show_settings: bool,
     pub settings_input: String,
     pub config: AppConfig,
+    pub list_table_state: TableState,
+    pub terminal_size: (u16, u16),
 }
 
 impl App {
@@ -82,6 +85,8 @@ impl App {
             show_settings: false,
             settings_input: String::new(),
             config: AppConfig::load(),
+            list_table_state: TableState::default(),
+            terminal_size: (0, 0),
         }
     }
 
@@ -108,6 +113,8 @@ impl App {
             show_settings: false,
             settings_input: String::new(),
             config: AppConfig::default(),
+            list_table_state: TableState::default(),
+            terminal_size: (0, 0),
         }
     }
 
@@ -139,6 +146,43 @@ impl App {
         self.current_tab = tab;
         self.selected_session_idx = 0;
         self.preview_scroll = 0;
+    }
+
+    /// Behandelt einen Mausklick. Koordinaten sind Terminal-Zellen (col, row).
+    pub fn handle_mouse_click(&mut self, col: u16, row: u16) {
+        let (width, height) = self.terminal_size;
+        if width == 0 || height == 0 {
+            return;
+        }
+        // Tab-Bar: obere 3 Zeilen
+        if row < 3 {
+            let list_width = width * 35 / 100;
+            if col < list_width {
+                self.switch_to_tab(Tab::Sessions);
+            } else {
+                self.switch_to_tab(Tab::Trash);
+            }
+            return;
+        }
+        // Command Bar: unterste 3 Zeilen
+        if row >= height.saturating_sub(3) {
+            return;
+        }
+        let list_width = width * 35 / 100;
+        if col < list_width {
+            // Klick in Session-Liste: Zeile 3=Border, 4=Header, 5+=Sessions
+            if row >= 5 {
+                let clicked = self.list_table_state.offset() + (row - 5) as usize;
+                let len = self.filtered_sessions().len();
+                if clicked < len {
+                    self.selected_session_idx = clicked;
+                    self.preview_scroll = 0;
+                    self.focus = FocusPanel::List;
+                }
+            }
+        } else {
+            self.focus = FocusPanel::Preview;
+        }
     }
 
     pub fn get_selected_session(&self) -> Option<&Session> {
