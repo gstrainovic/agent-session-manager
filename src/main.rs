@@ -630,10 +630,20 @@ mod tests {
     fn test_mouse_click_tab_bar_switches_to_trash() {
         let mut app = App::with_sessions(vec![]);
         // Sessions-Tab: "  ● 1 Sessions (0)  " = 20 Zeichen → cols 0-20
-        // Trash-Tab: cols 21+ → col=100 trifft Trash
+        // Trash-Tab: "  ○ 2 Trash (0)  " = 18 Zeichen → cols 21-38
         app.update_click_regions(160, 40);
-        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 100, 1));
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 25, 1));
         assert_eq!(app.current_tab, crate::app::Tab::Trash);
+    }
+
+    #[test]
+    fn test_mouse_click_tab_bar_help_opens_help() {
+        let mut app = App::with_sessions(vec![]);
+        // Help-Hint: "│  h help  " = 11 Zeichen → cols 39-49
+        app.update_click_regions(160, 40);
+        assert!(!app.show_help);
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 42, 1));
+        assert!(app.show_help);
     }
 
     #[test]

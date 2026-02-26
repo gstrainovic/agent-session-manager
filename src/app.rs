@@ -240,16 +240,24 @@ impl App {
 
         // --- Normal-Modus: Tab-Bar + Command-Bar ---
 
-        // Tab-Bar (Zeilen 0..2)
+        // Tab-Bar (Zeilen 0..2): Sessions | Trash | h help
         let sessions_text = format!("  ● 1 Sessions ({})  ", self.sessions.len());
+        let trash_text = format!("  ○ 2 Trash ({})  ", self.trash.len());
+        let help_text = "│  h help  ";
         let sw = sessions_text.chars().count() as u16;
+        let tw = trash_text.chars().count() as u16;
+        let hw = help_text.chars().count() as u16;
         self.click_regions.push((
             Rect { x: 0, y: 0, width: 1 + sw, height: 3 },
             ClickAction::SwitchTab(Tab::Sessions),
         ));
         self.click_regions.push((
-            Rect { x: 1 + sw, y: 0, width: width.saturating_sub(1 + sw), height: 3 },
+            Rect { x: 1 + sw, y: 0, width: tw, height: 3 },
             ClickAction::SwitchTab(Tab::Trash),
+        ));
+        self.click_regions.push((
+            Rect { x: 1 + sw + tw, y: 0, width: hw, height: 3 },
+            ClickAction::ToggleHelp,
         ));
 
         // Command-Bar (unterste 3 Zeilen)
