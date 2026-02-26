@@ -323,19 +323,54 @@ fn handle_key_event(
 /// Gibt `true` zurück wenn die App beendet werden soll.
 fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) -> bool {
     match mouse.kind {
-        MouseEventKind::ScrollUp => match app.focus {
-            crate::app::FocusPanel::List => app.select_prev(),
-            crate::app::FocusPanel::Preview => app.preview_scroll_up(3),
-        },
-        MouseEventKind::ScrollDown => match app.focus {
-            crate::app::FocusPanel::List => app.select_next(),
-            crate::app::FocusPanel::Preview => app.preview_scroll_down(3),
-        },
+        MouseEventKind::ScrollUp => {
+            if app.show_help {
+                app.help_scroll_up(3);
+            } else if !app.show_settings {
+                // Scroll folgt Mausposition statt Fokus-Panel
+                let list_width = app.terminal_size.0 * 30 / 100;
+                if mouse.column < list_width {
+                    app.select_prev();
+                } else {
+                    app.preview_scroll_up(3);
+                }
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if app.show_help {
+                app.help_scroll_down(3);
+            } else if !app.show_settings {
+                let list_width = app.terminal_size.0 * 30 / 100;
+                if mouse.column < list_width {
+                    app.select_next();
+                } else {
+                    app.preview_scroll_down(3);
+                }
+            }
+        }
         MouseEventKind::Down(MouseButton::Left) => {
             let (col, row) = (mouse.column, mouse.row);
             if let Some(action) = app.get_click_action(col, row) {
                 return dispatch_click_action(app, action);
             }
+            // Click outside registrierter Region: Modal schließen
+            if app.show_help {
+                app.toggle_help();
+                return false;
+            }
+            if app.show_settings {
+                app.cancel_settings();
+                return false;
+            }
+            if app.show_search {
+                app.show_search = false;
+                return false;
+            }
+            if app.is_confirmation_pending() {
+                app.cancel_confirmation();
+                return false;
+            }
+            // Normal-Modus: Listen-/Preview-Klick
             app.handle_list_click(col, row);
         }
         _ => {}
@@ -345,47 +380,79 @@ fn handle_mouse_event(app: &mut App, mouse: event::MouseEvent) -> bool {
 
 /// Führt eine ClickAction aus. Gibt `true` zurück wenn die App beendet werden soll.
 fn dispatch_click_action(app: &mut App, action: crate::app::ClickAction) -> bool {
-    // Keine Aktionen während modaler Dialoge (außer Tab-Wechsel)
     use crate::app::ClickAction;
-    if matches!(action, ClickAction::SwitchTab(_)) {
-        if let ClickAction::SwitchTab(tab) = action {
-            app.switch_to_tab(tab);
-        }
-        return false;
-    }
-    if app.show_settings || app.show_help || app.is_confirmation_pending() {
-        return false;
-    }
     match action {
-        ClickAction::SwitchTab(_) => unreachable!(),
-        ClickAction::ResumeSession => app.switch_to_selected_session(),
-        ClickAction::DeleteSession => app.request_delete_confirmation(),
-        ClickAction::ExportSession => {
-            if let Some(session) = app.get_selected_session() {
-                let export_dir = app.config.resolved_export_path();
-                let session_clone = session.clone();
-                match commands::export_session(&session_clone, &export_dir) {
-                    Ok(path) => app.set_status(format!("Exported to {}", path)),
-                    Err(_) => app.set_status("Export failed".to_string()),
+        // Tab-Wechsel funktioniert immer
+        ClickAction::SwitchTab(tab) => app.switch_to_tab(tab),
+        // Modal-Aktionen: Settings Save/Cancel, Confirm Yes/No
+        ClickAction::SaveSettings => app.save_settings(),
+        ClickAction::CancelSettings => app.cancel_settings(),
+        ClickAction::ConfirmYes => {
+            // Gleiche Logik wie 'y'-Taste
+            use crate::app::ConfirmAction;
+            if let Some(action) = &app.confirm_action {
+                match action {
+                    ConfirmAction::DeleteToTrash(_) => {
+                        if let Some(session) = app.get_selected_session() {
+                            let session_clone = session.clone();
+                            match commands::delete_session(&session_clone) {
+                                Ok(_) => {
+                                    app.move_selected_to_trash();
+                                    app.confirm_action = None;
+                                }
+                                Err(_) => {
+                                    app.set_status("Delete failed".to_string());
+                                    app.confirm_action = None;
+                                }
+                            }
+                        }
+                    }
+                    ConfirmAction::DeletePermanently(_)
+                    | ConfirmAction::EmptyTrash
+                    | ConfirmAction::TrashZeroMessages => {
+                        app.confirm_and_execute();
+                    }
                 }
             }
         }
-        ClickAction::CleanZeroMessages => app.request_trash_zero_messages(),
-        ClickAction::ToggleSearch => app.toggle_search(),
-        ClickAction::ToggleSort => {
-            app.toggle_sort();
-            let sort_name = match app.sort_field {
-                crate::app::SortField::Project => "project",
-                crate::app::SortField::Messages => "messages",
-                crate::app::SortField::Date => "date",
-            };
-            app.set_status(format!("Sorted by: {}", sort_name));
+        ClickAction::ConfirmNo => app.cancel_confirmation(),
+        // Normal-Modus-Aktionen: nur wenn kein Modal offen
+        _ => {
+            if app.show_settings || app.show_help || app.is_confirmation_pending() {
+                return false;
+            }
+            match action {
+                ClickAction::ResumeSession => app.switch_to_selected_session(),
+                ClickAction::DeleteSession => app.request_delete_confirmation(),
+                ClickAction::ExportSession => {
+                    if let Some(session) = app.get_selected_session() {
+                        let export_dir = app.config.resolved_export_path();
+                        let session_clone = session.clone();
+                        match commands::export_session(&session_clone, &export_dir) {
+                            Ok(path) => app.set_status(format!("Exported to {}", path)),
+                            Err(_) => app.set_status("Export failed".to_string()),
+                        }
+                    }
+                }
+                ClickAction::CleanZeroMessages => app.request_trash_zero_messages(),
+                ClickAction::ToggleSearch => app.toggle_search(),
+                ClickAction::ToggleSort => {
+                    app.toggle_sort();
+                    let sort_name = match app.sort_field {
+                        crate::app::SortField::Project => "project",
+                        crate::app::SortField::Messages => "messages",
+                        crate::app::SortField::Date => "date",
+                    };
+                    app.set_status(format!("Sorted by: {}", sort_name));
+                }
+                ClickAction::OpenSettings => app.open_settings(),
+                ClickAction::ToggleHelp => app.toggle_help(),
+                ClickAction::Quit => return true,
+                ClickAction::RestoreFromTrash => app.restore_selected_from_trash(),
+                ClickAction::EmptyTrash => app.request_empty_trash(),
+                _ => {} // Modal-Aktionen bereits oben behandelt
+            }
         }
-        ClickAction::OpenSettings => app.open_settings(),
-        ClickAction::ToggleHelp => app.toggle_help(),
-        ClickAction::Quit => return true,
-        ClickAction::RestoreFromTrash => app.restore_selected_from_trash(),
-        ClickAction::EmptyTrash => app.request_empty_trash(),
     }
     false
 }
@@ -527,7 +594,9 @@ mod tests {
             make_session("s1", "p1"),
             make_session("s2", "p2"),
         ]);
-        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 0, 10));
+        app.terminal_size = (160, 40);
+        // col=10 liegt im Listen-Bereich (< 160*30/100=48) → scrollt Liste
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 10, 10));
         assert_eq!(app.selected_session_idx, 1);
     }
 
@@ -537,8 +606,9 @@ mod tests {
             make_session("s1", "p1"),
             make_session("s2", "p2"),
         ]);
+        app.terminal_size = (160, 40);
         app.selected_session_idx = 1;
-        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 0, 10));
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 10, 10));
         assert_eq!(app.selected_session_idx, 0);
     }
 
@@ -590,10 +660,201 @@ mod tests {
     #[test]
     fn test_mouse_scroll_in_preview_scrolls_content() {
         let mut app = App::with_sessions(vec![]);
-        app.focus = crate::app::FocusPanel::Preview;
+        app.terminal_size = (160, 40);
         app.preview_scroll = 10;
+        // col=100 liegt im Preview-Bereich (>= 160*30/100=48) → scrollt Preview
         handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 100, 10));
         assert!(app.preview_scroll < 10);
+    }
+
+    // --- 100% Maus-Support Tests ---
+
+    #[test]
+    fn test_click_outside_closes_help() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.toggle_help();
+        assert!(app.show_help);
+        app.update_click_regions(160, 40);
+        // Klick auf (0, 0) — keine Regionen registriert bei show_help → click-outside
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn test_click_outside_closes_settings() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.open_settings();
+        assert!(app.show_settings);
+        app.update_click_regions(160, 40);
+        // Klick auf (0, 0) — außerhalb des Settings-Modals
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
+        assert!(!app.show_settings);
+    }
+
+    #[test]
+    fn test_click_outside_closes_search() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.toggle_search();
+        assert!(app.show_search);
+        app.update_click_regions(160, 40);
+        // Klick auf (0, 0) — keine Regionen bei show_search → click-outside
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
+        assert!(!app.show_search);
+    }
+
+    #[test]
+    fn test_click_outside_cancels_confirmation() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.terminal_size = (160, 40);
+        app.request_delete_confirmation();
+        assert!(app.is_confirmation_pending());
+        app.update_click_regions(160, 40);
+        // Klick auf (0, 0) — außerhalb der [y]/[n] Buttons
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 0, 0));
+        assert!(!app.is_confirmation_pending());
+    }
+
+    #[test]
+    fn test_mouse_scroll_in_help_modal() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.toggle_help();
+        app.help_scroll = 5;
+        // Scroll down → help_scroll steigt
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 80, 20));
+        assert_eq!(app.help_scroll, 8); // 5 + 3
+        // Scroll up → help_scroll sinkt
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollUp, 80, 20));
+        assert_eq!(app.help_scroll, 5); // 8 - 3
+    }
+
+    #[test]
+    fn test_scroll_follows_mouse_position_not_focus() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.terminal_size = (160, 40);
+        // Fokus auf Preview, aber Maus über Liste (col=10 < 48)
+        app.focus = crate::app::FocusPanel::Preview;
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 10, 10));
+        // Liste wurde gescrollt, nicht Preview
+        assert_eq!(app.selected_session_idx, 1);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn test_settings_save_click() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.open_settings();
+        app.settings_input = "/new/path".to_string();
+        app.update_click_regions(160, 40);
+        // Settings-Modal: popup_width = 160*0.6 = 96, popup_x = 32, inner_x = 33
+        // btn_y = (40-7)/2 + 1 + 4 = 16 + 1 + 4 = 21
+        // Save-Button: x=33, width=16, y=21
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 40, 21));
+        assert!(!app.show_settings);
+        assert_eq!(app.config.export_path, "/new/path");
+    }
+
+    #[test]
+    fn test_settings_cancel_click() {
+        let mut app = App::with_sessions(vec![]);
+        app.terminal_size = (160, 40);
+        app.open_settings();
+        let original = app.config.export_path.clone();
+        app.settings_input = "/changed".to_string();
+        app.update_click_regions(160, 40);
+        // Cancel-Button: x=33+16=49, width=12, y=21
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 52, 21));
+        assert!(!app.show_settings);
+        assert_eq!(app.config.export_path, original);
+    }
+
+    #[test]
+    fn test_confirm_yes_click() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = crate::app::Tab::Trash;
+        app.terminal_size = (160, 40);
+        app.confirm_action = Some(crate::app::ConfirmAction::DeletePermanently("t1".to_string()));
+        app.set_status("PERMANENTLY delete 'p1'? Press 'd' or 'y' to confirm, 'n' or Esc to cancel".to_string());
+        app.update_click_regions(160, 40);
+        // [y] Button: nach Question-Text + 2 Zeichen Abstand
+        // "PERMANENTLY delete 'p1'?" = 24 Zeichen + 2 = 26 → x=26
+        let action = app.get_click_action(28, 38);
+        assert_eq!(action, Some(crate::app::ClickAction::ConfirmYes));
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 28, 38));
+        assert!(app.trash.is_empty());
+    }
+
+    #[test]
+    fn test_confirm_no_click() {
+        let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
+        app.terminal_size = (160, 40);
+        app.request_delete_confirmation();
+        assert!(app.is_confirmation_pending());
+        app.update_click_regions(160, 40);
+        // [n] Button: nach [y] Button + 2 Zeichen
+        // Für diesen Test: prüfen dass ConfirmNo Region existiert
+        let has_confirm_no = app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmNo);
+        assert!(has_confirm_no);
+        // Klick auf die [n] Region
+        let (rx, ry) = {
+            let (rect, _) = app.click_regions.iter().find(|(_, a)| *a == crate::app::ClickAction::ConfirmNo).unwrap();
+            (rect.x + 1, rect.y)
+        };
+        handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), rx, ry));
+        assert!(!app.is_confirmation_pending());
+    }
+
+    #[test]
+    fn test_no_normal_regions_during_modals() {
+        let mut app = App::with_sessions(vec![]);
+        // Help-Modal: keine Regionen registriert
+        app.toggle_help();
+        app.update_click_regions(160, 40);
+        assert!(app.click_regions.is_empty());
+
+        // Search-Modal: keine Regionen
+        app.toggle_help();
+        app.toggle_search();
+        app.update_click_regions(160, 40);
+        assert!(app.click_regions.is_empty());
+
+        // Settings-Modal: nur Save/Cancel Regionen
+        app.show_search = false;
+        app.open_settings();
+        app.update_click_regions(160, 40);
+        assert_eq!(app.click_regions.len(), 2);
+        assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::SaveSettings));
+        assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::CancelSettings));
+
+        // Confirmation: nur [y]/[n] Regionen
+        app.cancel_settings();
+        app.sessions = vec![make_session("s1", "p1")];
+        app.request_delete_confirmation();
+        app.update_click_regions(160, 40);
+        assert_eq!(app.click_regions.len(), 2);
+        assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmYes));
+        assert!(app.click_regions.iter().any(|(_, a)| *a == crate::app::ClickAction::ConfirmNo));
+    }
+
+    #[test]
+    fn test_scroll_blocked_during_settings() {
+        let mut app = App::with_sessions(vec![
+            make_session("s1", "p1"),
+            make_session("s2", "p2"),
+        ]);
+        app.terminal_size = (160, 40);
+        app.open_settings();
+        handle_mouse_event(&mut app, mouse(MouseEventKind::ScrollDown, 10, 10));
+        // Scroll wird blockiert — Liste unverändert
+        assert_eq!(app.selected_session_idx, 0);
     }
 
     #[test]

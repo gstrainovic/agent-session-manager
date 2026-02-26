@@ -391,6 +391,28 @@ fn draw_search_modal(f: &mut Frame, app: &App) {
 fn draw_commands(f: &mut Frame, area: Rect, app: &App) {
     let sep = Span::styled("  │  ", Style::default().fg(Color::DarkGray));
 
+    // Confirmation mit [y]/[n] Buttons
+    if app.is_confirmation_pending() {
+        if let Some(ref msg) = app.status_message {
+            let question = if let Some(pos) = msg.find(" Press ") {
+                &msg[..pos]
+            } else {
+                msg.as_str()
+            };
+            let bar = Paragraph::new(Line::from(vec![
+                Span::styled(format!("{}  ", question), Style::default().fg(Color::Yellow)),
+                Span::styled(" [y] yes ", Style::default().fg(Color::Black).bg(Color::Green)),
+                Span::raw("  "),
+                Span::styled(" [n] no  ", Style::default().fg(Color::Black).bg(Color::Red)),
+            ]))
+            .block(Block::default().borders(Borders::TOP).border_style(
+                Style::default().fg(Color::DarkGray),
+            ));
+            f.render_widget(bar, area);
+            return;
+        }
+    }
+
     // Status-Nachricht: volle Breite
     if let Some(ref msg) = app.status_message {
         let bar = Paragraph::new(Line::from(vec![

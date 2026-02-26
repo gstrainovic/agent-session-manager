@@ -53,6 +53,10 @@ pub enum ClickAction {
     Quit,
     RestoreFromTrash,
     EmptyTrash,
+    SaveSettings,
+    CancelSettings,
+    ConfirmYes,
+    ConfirmNo,
 }
 
 pub struct App {
@@ -181,20 +185,68 @@ impl App {
         None
     }
 
-    /// Berechnet klickbare Regionen für Tab-Bar und Command-Bar neu.
+    /// Berechnet klickbare Regionen für den aktuellen UI-State neu.
     /// Wird am Anfang jedes Frames in draw() aufgerufen.
+    /// Modals haben Priorität: wenn ein Modal offen ist, werden nur dessen Regionen registriert.
     pub fn update_click_regions(&mut self, width: u16, height: u16) {
         self.click_regions.clear();
+
+        // --- Modal-States: nur modal-spezifische Regionen ---
+        if self.show_settings {
+            // Settings-Modal: Save/Cancel Buttons
+            let popup_width = (width as f32 * 0.6) as u16;
+            let popup_height = 7u16;
+            let popup_x = width.saturating_sub(popup_width.min(width)) / 2;
+            let popup_y = height.saturating_sub(popup_height.min(height)) / 2;
+            let inner_x = popup_x + 1; // innerhalb Block-Border
+            let inner_y = popup_y + 1;
+            let btn_y = inner_y + 4; // 5. Zeile im Modal (index 4)
+            // "  [Enter] save  " = 16 Zeichen
+            self.click_regions.push((
+                Rect { x: inner_x, y: btn_y, width: 16, height: 1 },
+                ClickAction::SaveSettings,
+            ));
+            // "[Esc] cancel" = 12 Zeichen
+            self.click_regions.push((
+                Rect { x: inner_x + 16, y: btn_y, width: 12, height: 1 },
+                ClickAction::CancelSettings,
+            ));
+            return;
+        }
+        if self.show_help || self.show_search {
+            // Keine Klick-Regionen — Click-Outside wird in main.rs behandelt
+            return;
+        }
+        if self.is_confirmation_pending() {
+            // [y] yes / [n] no Buttons in Command-Bar
+            // Gerendert als: "Frage...  [y] yes   [n] no "
+            if let Some(ref msg) = self.status_message {
+                let question = msg.find(" Press ").map_or(msg.len(), |p| p);
+                let cmd_content_y = height.saturating_sub(2); // Content-Zeile der Command-Bar
+                let q_width = msg[..question].chars().count() as u16 + 2;
+                // " [y] yes " = 9 Zeichen
+                self.click_regions.push((
+                    Rect { x: q_width, y: cmd_content_y, width: 9, height: 1 },
+                    ClickAction::ConfirmYes,
+                ));
+                // "  " = 2 Zeichen Abstand + " [n] no  " = 9 Zeichen
+                self.click_regions.push((
+                    Rect { x: q_width + 11, y: cmd_content_y, width: 9, height: 1 },
+                    ClickAction::ConfirmNo,
+                ));
+            }
+            return;
+        }
+
+        // --- Normal-Modus: Tab-Bar + Command-Bar ---
 
         // Tab-Bar (Zeilen 0..2)
         let sessions_text = format!("  ● 1 Sessions ({})  ", self.sessions.len());
         let sw = sessions_text.chars().count() as u16;
-        // Sessions-Tab: linker Rand (1 Zelle) + Sessions-Text
         self.click_regions.push((
             Rect { x: 0, y: 0, width: 1 + sw, height: 3 },
             ClickAction::SwitchTab(Tab::Sessions),
         ));
-        // Trash-Tab: vom Ende des Sessions-Tabs bis zum rechten Rand
         self.click_regions.push((
             Rect { x: 1 + sw, y: 0, width: width.saturating_sub(1 + sw), height: 3 },
             ClickAction::SwitchTab(Tab::Trash),
@@ -202,8 +254,8 @@ impl App {
 
         // Command-Bar (unterste 3 Zeilen)
         let cmd_y = height.saturating_sub(3);
-        // nav: "↑↓" (2) + " nav  " (6) + "←→" (2) + " focus" (6) = 16 Zeichen
-        // sep: "  │  " = 5 Zeichen → x_offset startet bei 21
+        // nav: "↑↓"(2) + " nav  "(6) + "←→"(2) + " focus"(6) = 16
+        // sep: "  │  " = 5 → x_offset startet bei 21
         let mut x: u16 = 21;
 
         let actions: Vec<(&str, &str, ClickAction)> = match self.current_tab {
