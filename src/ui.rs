@@ -474,22 +474,21 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
 
     let action_defs: Vec<(&str, &str, ClickAction)> = match app.current_tab {
         Tab::Sessions => vec![
-            ("Enter", " resume  ", ClickAction::ResumeSession),
+            ("r", " resume  ", ClickAction::ResumeSession),
             ("d", " delete  ", ClickAction::DeleteSession),
             ("e", " export  ", ClickAction::ExportSession),
-            ("0", " clean  ", ClickAction::CleanZeroMessages),
-            ("f", " search  ", ClickAction::ToggleSearch),
+            ("c", " clear  ", ClickAction::CleanZeroMessages),
+            ("f", " find  ", ClickAction::ToggleSearch),
             ("s", " sort  ", ClickAction::ToggleSort),
-            ("g", " settings  ", ClickAction::OpenSettings),
+            ("p", " preferences  ", ClickAction::OpenSettings),
             ("h", " help  ", ClickAction::ToggleHelp),
             ("q", " quit", ClickAction::Quit),
         ],
         Tab::Trash => vec![
-            ("Enter", " restore  ", ClickAction::RestoreFromTrash),
-            ("d", " delete  ", ClickAction::DeleteSession),
-            ("t", " empty  ", ClickAction::EmptyTrash),
+            ("u", " undo  ", ClickAction::RestoreFromTrash),
+            ("e", " empty trash ", ClickAction::EmptyTrash),
+            ("f", " find  ", ClickAction::ToggleSearch),
             ("s", " sort  ", ClickAction::ToggleSort),
-            ("g", " settings  ", ClickAction::OpenSettings),
             ("h", " help  ", ClickAction::ToggleHelp),
             ("q", " quit", ClickAction::Quit),
         ],
@@ -504,7 +503,7 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
     let mut x = area.x + nav_width + sep_width;
 
     for (key, desc, click_action) in &action_defs {
-        let key_style = if *key == "d" || *key == "0" || *key == "t" { d(key) } else { k(key) };
+        let key_style = if *key == "d" || *key == "c" { d(key) } else { k(key) };
         actions.push(key_style);
         actions.push(t(desc));
         let kw = key.chars().count() as u16;
@@ -964,7 +963,7 @@ mod tests {
         let output = render_to_string(&mut app, 100, 20);
         assert!(output.contains("resume"), "Should show resume command");
         assert!(output.contains("elete"), "Should show delete command");
-        assert!(output.contains("search"), "Should show search command");
+        assert!(output.contains("find"), "Should show find command");
     }
 
     #[test]

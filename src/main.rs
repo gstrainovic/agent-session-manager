@@ -192,6 +192,14 @@ fn handle_key_event(
         KeyCode::Enter if !app.show_search => {
             app.switch_to_selected_session();
         }
+        KeyCode::Char('r') if !app.show_search => {
+            if app.current_tab == crate::app::Tab::Sessions {
+                app.switch_to_selected_session();
+            }
+        }
+        KeyCode::Char('u') if !app.show_search => {
+            app.restore_selected_from_trash();
+        }
         KeyCode::Char('d') if !app.show_search => {
             if app.is_confirmation_pending() {
                 use crate::app::ConfirmAction;
@@ -254,38 +262,37 @@ fn handle_key_event(
         KeyCode::Char('n') if !app.show_search && app.is_confirmation_pending() => {
             app.cancel_confirmation();
         }
-        KeyCode::Char('r') if !app.show_search => {
-            app.restore_selected_from_trash();
-        }
-        KeyCode::Char('0') if !app.show_search => {
+        KeyCode::Char('c') if !app.show_search => {
             if app.is_confirmation_pending() {
                 app.confirm_and_execute();
             } else {
                 app.request_trash_zero_messages();
             }
         }
-        KeyCode::Char('t') if !app.show_search => {
-            if app.is_confirmation_pending() {
-                app.confirm_and_execute();
-            } else {
-                app.request_empty_trash();
-            }
-        }
-        KeyCode::Char('e') if !app.show_search => {
-            if let Some(session) = app.get_selected_session() {
-                let export_dir = app.config.resolved_export_path();
-                let session_clone = session.clone();
-                match commands::export_session(&session_clone, &export_dir) {
-                    Ok(path) => {
-                        app.set_status(format!("Exported to {}", path));
-                    }
-                    Err(_e) => {
-                        app.set_status("Export failed".to_string());
+        KeyCode::Char('e') if !app.show_search => match app.current_tab {
+            crate::app::Tab::Sessions => {
+                if let Some(session) = app.get_selected_session() {
+                    let export_dir = app.config.resolved_export_path();
+                    let session_clone = session.clone();
+                    match commands::export_session(&session_clone, &export_dir) {
+                        Ok(path) => {
+                            app.set_status(format!("Exported to {}", path));
+                        }
+                        Err(_e) => {
+                            app.set_status("Export failed".to_string());
+                        }
                     }
                 }
             }
-        }
-        KeyCode::Char('g') if !app.show_search => {
+            crate::app::Tab::Trash => {
+                if app.is_confirmation_pending() {
+                    app.confirm_and_execute();
+                } else {
+                    app.request_empty_trash();
+                }
+            }
+        },
+        KeyCode::Char('p') if !app.show_search => {
             app.open_settings();
         }
         KeyCode::Char('s') if !app.show_search => {
@@ -560,9 +567,9 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_g_opens_settings() {
+    fn test_handle_p_opens_settings() {
         let mut app = App::with_sessions(vec![]);
-        handle_key_event(&mut app, press(KeyCode::Char('g')));
+        handle_key_event(&mut app, press(KeyCode::Char('p')));
         assert!(app.show_settings);
     }
 
@@ -669,8 +676,8 @@ mod tests {
     fn test_mouse_click_command_bar_opens_settings() {
         let mut app = App::with_sessions(vec![]);
         render_frame(&mut app, 160, 40);
-        // "g settings" startet bei x=82 (nav=16 + sep=5 + Enter+resume=14 + d+delete=10
-        // + e+export=10 + 0+clean=9 + f+search=10 + s+sort=8 = 82), Breite=12
+        // "p preferences" startet bei x=76 (nav=16 + sep=5 + r+resume=10 + d+delete=10
+        // + e+export=10 + c+clear=9 + f+find=8 + s+sort=8 = 76), Breite=15
         // cmd_y = 40-3 = 37 → row=38 liegt in height:3
         handle_mouse_event(&mut app, mouse(MouseEventKind::Down(MouseButton::Left), 85, 38));
         assert!(app.show_settings);
@@ -1045,24 +1052,43 @@ mod tests {
         assert_eq!(app.selected_session_idx, 0);
     }
 
-    // --- 'r' restore ---
+    // --- 'r' resume ---
 
     #[test]
-    fn test_handle_r_restore_in_sessions_tab() {
+    fn test_handle_r_resumes_in_sessions_tab() {
         let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
         handle_key_event(&mut app, press(KeyCode::Char('r')));
-        // restore in sessions tab shows error status
-        assert!(app.status_message.unwrap().contains("Trash tab"));
+        assert!(app.resume_session_id.is_some());
     }
 
-    // --- 't' empty trash ---
-
     #[test]
-    fn test_handle_t_requests_empty_trash() {
+    fn test_handle_r_noop_in_trash_tab() {
         let mut app = App::with_sessions(vec![]);
         app.trash = vec![make_session("t1", "p1")];
         app.current_tab = Tab::Trash;
-        handle_key_event(&mut app, press(KeyCode::Char('t')));
+        handle_key_event(&mut app, press(KeyCode::Char('r')));
+        assert!(app.resume_session_id.is_none());
+    }
+
+    // --- 'u' restore from trash ---
+
+    #[test]
+    fn test_handle_u_restores_from_trash() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        handle_key_event(&mut app, press(KeyCode::Char('u')));
+        assert!(app.trash.is_empty());
+    }
+
+    // --- 'e' empty trash (Trash tab) ---
+
+    #[test]
+    fn test_handle_e_requests_empty_trash_in_trash_tab() {
+        let mut app = App::with_sessions(vec![]);
+        app.trash = vec![make_session("t1", "p1")];
+        app.current_tab = Tab::Trash;
+        handle_key_event(&mut app, press(KeyCode::Char('e')));
         assert_eq!(
             app.confirm_action,
             Some(crate::app::ConfirmAction::EmptyTrash)
@@ -1070,22 +1096,22 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_t_confirms_when_pending() {
+    fn test_handle_e_confirms_empty_trash_when_pending() {
         let mut app = App::with_sessions(vec![]);
         app.trash = vec![make_session("t1", "p1")];
         app.current_tab = Tab::Trash;
         app.confirm_action = Some(crate::app::ConfirmAction::EmptyTrash);
-        handle_key_event(&mut app, press(KeyCode::Char('t')));
+        handle_key_event(&mut app, press(KeyCode::Char('e')));
         assert!(app.trash.is_empty());
     }
 
-    // --- '0' trash zero messages ---
+    // --- 'c' trash zero messages ---
 
     #[test]
-    fn test_handle_0_requests_trash_zero() {
+    fn test_handle_c_requests_trash_zero() {
         let mut app = App::with_sessions(vec![make_session("s1", "p1")]);
         app.sessions[0].messages.clear();
-        handle_key_event(&mut app, press(KeyCode::Char('0')));
+        handle_key_event(&mut app, press(KeyCode::Char('c')));
         assert_eq!(
             app.confirm_action,
             Some(crate::app::ConfirmAction::TrashZeroMessages)
