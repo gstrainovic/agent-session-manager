@@ -10,7 +10,7 @@ A terminal-based session manager for Claude Code sessions.
 - **Session Overview**: Display all Claude Code sessions with project info, date, and message count
 - **Quick Navigation**: Switch between sessions easily with arrow keys and Enter
 - **Sortable Columns**: Sort by project name, message count, or date
-- **Search**: Find sessions quickly with `Ctrl+F`
+- **Search**: Find sessions quickly with `f`
 - **Message Preview**: Show conversation content with scrollable preview
 - **Session Export**: Export sessions as Markdown files to a configurable path
 - **Settings**: Configure export path via `g`, persisted across sessions
