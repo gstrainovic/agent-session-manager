@@ -4,6 +4,8 @@
 
 Terminal-UI Session-Manager für Claude Code Sessions, geschrieben in Rust mit ratatui.
 
+> **Wichtig:** Dieses Projekt ist aktuell **ausschließlich für Claude Code** ausgelegt und funktioniert nur damit. Es liest Session-Daten aus Claude Codes internen Verzeichnissen und verwaltet nur Sessions, die durch Claude Code erstellt wurden.
+
 ## Architektur
 
 ### Module
@@ -140,6 +142,7 @@ Event-Loop in `main.rs` delegiert zu App-Methoden:
 
 ## Bekannte Einschränkungen
 
+- **Claude Code-Abhängigkeit:** Funktioniert aktuell nur mit Claude Code — liest aus `~/.claude/projects/*/sessions/`
 - Keine Echtzeit-Updates (Session-Liste wird bei Start geladen)
 - Keine direkte Session-Bearbeitung (nur Switch, Delete, Export)
 - Messages werden komplett geladen (kein Lazy-Loading)

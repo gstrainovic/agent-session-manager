@@ -49,6 +49,8 @@ cargo install --path .
 
 ## Usage
 
+> **Note:** agent-session-manager is currently designed to work exclusively with [Claude Code](https://claude.com/claude-code). It reads session data from Claude Code's internal directories and manages sessions created through Claude Code only.
+
 Simply run:
 
 ```bash
