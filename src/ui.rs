@@ -182,7 +182,7 @@ fn draw_list(f: &mut Frame, area: Rect, app: &mut App) {
             let name = session.slug.as_deref().unwrap_or("");
 
             Row::new(vec![
-                Cell::from(session.project_name.as_str()),
+                Cell::from(session.display_project_name()),
                 Cell::from(name),
                 Cell::from(formatted_date),
                 Cell::from(format!("{}", session.messages.len())),
@@ -258,7 +258,7 @@ fn draw_preview(f: &mut Frame, area: Rect, app: &App) {
         let mut lines = vec![
             Line::from(vec![
                 Span::styled("Project: ", Style::default().fg(Color::Yellow)),
-                Span::raw(&session.project_name),
+                Span::raw(session.display_project_name()),
             ]),
             Line::from(vec![
                 Span::styled("Session: ", Style::default().fg(Color::Yellow)),

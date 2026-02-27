@@ -31,9 +31,10 @@ pub fn delete_session(_session: &Session) -> Result<()> {
 pub fn export_session(session: &Session, export_dir: &Path) -> Result<String> {
     fs::create_dir_all(export_dir)?;
 
+    let safe_name = session.project_name.trim_matches('-');
     let filename = format!(
         "{}-{}.md",
-        session.project_name,
+        safe_name,
         &session.id[..8.min(session.id.len())]
     );
     let path = export_dir.join(filename);
@@ -118,5 +119,21 @@ mod tests {
         assert!(content.contains("Hi there"));
         assert!(content.contains("## You"));
         assert!(content.contains("## Assistant"));
+    }
+
+    #[test]
+    fn test_export_filename_strips_leading_dash() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let mut session = make_test_session();
+        session.project_name = "-home-g".to_string();
+        let path = export_session(&session, tmp.path()).unwrap();
+        let filename = std::path::Path::new(&path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(!filename.starts_with('-'), "filename must not start with '-': {filename}");
+        assert!(filename.starts_with("home-g"), "filename should start with 'home-g': {filename}");
     }
 }

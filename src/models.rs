@@ -1,5 +1,25 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::LazyLock;
+
+static RE_CAVEAT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<local-command-caveat>.*?</local-command-caveat>\n?").unwrap()
+});
+static RE_TASK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<task-notification>(.*?)</task-notification>").unwrap()
+});
+static RE_CMD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<command-name>(.*?)</command-name>.*?<command-args>(.*?)</command-args>")
+        .unwrap()
+});
+static RE_STDOUT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<local-command-stdout>(.*?)</local-command-stdout>").unwrap()
+});
+static RE_XML: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
+static RE_ANSI: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\x1b\[[0-9;]*[mGKHFABCDsuJr]|\[[0-9;]*m)").unwrap());
+static RE_BLANK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -45,6 +65,10 @@ impl Session {
         }
     }
 
+    pub fn display_project_name(&self) -> &str {
+        self.project_name.trim_matches('-')
+    }
+
     pub fn display_name(&self) -> String {
         let short_id = if self.id.len() > 8 {
             &self.id[..8]
@@ -80,6 +104,79 @@ pub fn count_jsonl_entries(content: &str) -> usize {
         .lines()
         .filter(|line| serde_json::from_str::<serde_json::Value>(line).is_ok())
         .count()
+}
+
+fn clean_message_content(content: &str) -> String {
+    let mut text = content.to_string();
+
+    text = RE_CAVEAT.replace_all(&text, "").into_owned();
+
+    text = RE_TASK
+        .replace_all(&text, |caps: &regex::Captures| {
+            let inner = &caps[1];
+            let summary = extract_xml_inner(inner, "summary").unwrap_or("?");
+            let status = extract_xml_inner(inner, "status").unwrap_or("?");
+            format!("> **[Task {}]** {}", status, summary)
+        })
+        .into_owned();
+
+    text = RE_CMD
+        .replace_all(&text, |caps: &regex::Captures| {
+            let name = caps[1].trim();
+            let args = caps[2].trim();
+            if args.is_empty() {
+                format!("`{}`", name)
+            } else {
+                format!("`{} {}`", name, args)
+            }
+        })
+        .into_owned();
+
+    text = RE_STDOUT
+        .replace_all(&text, |caps: &regex::Captures| {
+            let inner = strip_ansi(&caps[1]).trim().to_string();
+            if inner.is_empty() {
+                String::new()
+            } else {
+                format!("\n```\n{}\n```\n", inner)
+            }
+        })
+        .into_owned();
+
+    text = RE_XML.replace_all(&text, "").into_owned();
+    text = strip_ansi(&text);
+    text = RE_BLANK.replace_all(&text, "\n\n").into_owned();
+
+    text.trim().to_string()
+}
+
+fn strip_ansi(s: &str) -> String {
+    RE_ANSI.replace_all(s, "").into_owned()
+}
+
+/// Erkennt Messages die nur Slash-Commands oder reinen Stdout enthalten — kein echter Gesprächsinhalt.
+fn is_noise_message(text: &str) -> bool {
+    let t = text.trim();
+    // Slash-Command: `/model`, `/exit`, `/context args` etc.
+    if t.starts_with('`') && t.ends_with('`') && t.len() > 2 {
+        let inner = &t[1..t.len() - 1];
+        if inner.starts_with('/') && !inner.contains('\n') {
+            return true;
+        }
+    }
+    // Reiner Code-Block (Stdout-Output ohne begleitenden Text)
+    if t.starts_with("```") && t.ends_with("```") && t.len() > 6 {
+        return true;
+    }
+    false
+}
+
+fn extract_xml_inner<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let start = text.find(&open)? + open.len();
+    let end = text.find(&close)?;
+    Some(text[start..end].trim())
 }
 
 pub fn parse_jsonl_messages(content: &str) -> Vec<Message> {
@@ -129,7 +226,9 @@ pub fn parse_jsonl_messages(content: &str) -> Vec<Message> {
             continue;
         };
 
-        if text.is_empty() {
+        let text = clean_message_content(&text);
+
+        if text.is_empty() || is_noise_message(&text) {
             continue;
         }
 
