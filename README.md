@@ -108,30 +108,30 @@ cargo build --release
 
 ### Testing
 
-Das Projekt verwendet eine 3-Layer Test-Architektur:
+The project uses a 3-layer test architecture:
 
-**Layer 1 — Unit-Tests** (92 Tests in `src/`):
+**Layer 1 — Unit Tests** (92 tests in `src/`):
 ```bash
 cargo test
 ```
 
-**Layer 2 — Integration Tests** (9 Tests in `tests/integration.rs`):
+**Layer 2 — Integration Tests** (9 tests in `tests/integration.rs`):
 ```bash
 cargo test --test integration
 ```
 
-**Layer 3 — E2E TUI-Tests** (6 Tests in `tests/e2e/`):
+**Layer 3 — E2E TUI Tests** (6 tests in `tests/e2e/`):
 
-Starten die echte Binary und interagieren per Tastatureingabe mit
-[@microsoft/tui-test](https://github.com/microsoft/tui-test) (xterm.js-basiert, plattformübergreifend).
+Launches the binary and interacts via keyboard input with
+[@microsoft/tui-test](https://github.com/microsoft/tui-test) (xterm.js-based, cross-platform).
 
 ```bash
-cargo build                     # Binary muss vorher gebaut sein
-cd tests/e2e && npm test        # E2E-Tests ausführen
+cargo build                     # Binary must be built first
+cd tests/e2e && npm test        # Run E2E tests
 ```
 
-Tests erzeugen bei jedem Lauf **Snapshots** in `tests/e2e/__snapshots__/sessions.test.ts.snap` —
-ASCII-Abbilder des Terminal-Zustands an jedem Prüfpunkt zur visuellen Inspektion.
+Tests generate **snapshots** on each run in `tests/e2e/__snapshots__/sessions.test.ts.snap` —
+ASCII representations of terminal state at each checkpoint for visual inspection.
 
 ## Session Data
 

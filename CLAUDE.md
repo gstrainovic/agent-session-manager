@@ -1,156 +1,156 @@
 # Agent Session Manager - Claude Guidelines
 
-## Projektübersicht
+## Project Overview
 
-Terminal-UI Session-Manager für Claude Code Sessions, geschrieben in Rust mit ratatui.
+Terminal-UI session manager for Claude Code sessions, written in Rust with ratatui.
 
-> **Wichtig:** Dieses Projekt ist aktuell **ausschließlich für Claude Code** ausgelegt und funktioniert nur damit. Es liest Session-Daten aus Claude Codes internen Verzeichnissen und verwaltet nur Sessions, die durch Claude Code erstellt wurden.
+> **Important:** This project is currently **exclusively designed for Claude Code** and only works with it. It reads session data from Claude Code's internal directories and manages only sessions created through Claude Code.
 
-## Architektur
+## Architecture
 
-### Module
+### Modules
 
-- **`models.rs`**: Core-Datenstrukturen
-  - `Session`: Repräsentiert eine Claude Code Session
-  - `Message`: Einzelne Nachricht (user/assistant)
-  - `parse_jsonl_messages()`: Parst Claude's JSONL-Format
+- **`models.rs`**: Core data structures
+  - `Session`: Represents a Claude Code session
+  - `Message`: Individual message (user/assistant)
+  - `parse_jsonl_messages()`: Parses Claude's JSONL format
 
-- **`store.rs`**: Session-Verwaltung
-  - Lädt Sessions aus `~/.claude/projects/*/sessions/`
-  - Verwaltet Trash-System
-  - Filtert und sortiert Sessions
+- **`store.rs`**: Session management
+  - Loads sessions from `~/.claude/projects/*/sessions/`
+  - Manages trash system
+  - Filters and sorts sessions
 
-- **`commands.rs`**: Session-Operationen
-  - `delete_session()`: Verschiebt zu Trash
-  - `export_session()`: Exportiert als Markdown in konfigurierten Pfad
+- **`commands.rs`**: Session operations
+  - `delete_session()`: Moves to trash
+  - `export_session()`: Exports as Markdown to configured path
 
-- **`config.rs`**: Persistente Konfiguration
-  - `AppConfig`: Serialisierbare Einstellungen (aktuell: `export_path`)
-  - Speicherort: `%APPDATA%\agent-session-manager\config.json` (Windows) / `~/.config/agent-session-manager/config.json` (Linux/macOS)
+- **`config.rs`**: Persistent configuration
+  - `AppConfig`: Serializable settings (currently: `export_path`)
+  - Location: `%APPDATA%\agent-session-manager\config.json` (Windows) / `~/.config/agent-session-manager/config.json` (Linux/macOS)
   - Default: `export_path = "~/claude-exports"`
 
-- **`app.rs`**: Application State
-  - Verwaltet aktuelle Auswahl, Tab-State, Search-Mode, Settings-Modal
-  - Enthält Hauptlogik für UI-Events
+- **`app.rs`**: Application state
+  - Manages current selection, tab state, search mode, settings modal
+  - Contains main logic for UI events
 
-- **`ui.rs`**: ratatui Rendering
-  - Split-Screen: Session-Liste links, Message-Preview rechts
-  - Tabs für Sessions/Trash
-  - Search-Modal, Delete-Confirmation Dialog, Settings-Modal, Help-Modal
+- **`ui.rs`**: ratatui rendering
+  - Split-screen: session list on left, message preview on right
+  - Tabs for Sessions/Trash
+  - Search modal, delete confirmation dialog, settings modal, help modal
 
-### Datenfluss
+### Data Flow
 
-1. `main.rs` initialisiert Terminal und App
-2. Event-Loop in `run_app()` behandelt Keyboard-Input
-3. `App` aktualisiert State basierend auf Events
-4. `ui::draw()` rendert aktuellen State
+1. `main.rs` initializes terminal and app
+2. Event loop in `run_app()` handles keyboard input
+3. `App` updates state based on events
+4. `ui::draw()` renders current state
 
-### JSONL-Format
+### JSONL Format
 
-Claude Code Sessions sind JSONL-Dateien mit Einträgen wie:
+Claude Code sessions are JSONL files with entries like:
 
 ```json
 {"type":"user","message":{"role":"user","content":"hello"},"uuid":"abc"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}]},"uuid":"def"}
 ```
 
-Parser filtert nur `type: "user"` und `type: "assistant"`, ignoriert `file-history-snapshot`, `progress` etc.
+Parser filters only `type: "user"` and `type: "assistant"`, ignores `file-history-snapshot`, `progress` etc.
 
 ## Testing
 
-### Layer 1 — Unit- & Snapshot-Tests (in `src/`)
+### Layer 1 — Unit & Snapshot Tests (in `src/`)
 
-Alle Module haben umfangreiche Unit-Tests:
-- `models::tests`: Session-Creation, Display-Names, JSONL-Parsing
-- `store::tests`: Session-Loading, Filtering, Env-Var-Isolation
-- `commands::tests`: Export-Funktionalität
-- `config::tests`: Save/Load Roundtrip, Pfad-Auflösung (Tilde-Expansion), Env-Var-Isolation
-- `app::tests`: State-Transitions, Settings-Modal (open/save/cancel)
-- `ui::tests`: Render-Snapshots mit `ratatui::TestBackend` + `insta`
+All modules have extensive unit tests:
+- `models::tests`: Session creation, display names, JSONL parsing
+- `store::tests`: Session loading, filtering, env var isolation
+- `commands::tests`: Export functionality
+- `config::tests`: Save/load roundtrip, path resolution (tilde expansion), env var isolation
+- `app::tests`: State transitions, settings modal (open/save/cancel)
+- `ui::tests`: Render snapshots with `ratatui::TestBackend` + `insta`
 
 ```bash
-cargo test  # alle Unit-Tests
+cargo test  # all unit tests
 ```
 
 ### Layer 2 — Integration Tests (`tests/integration.rs`)
 
-9 Tests die App-Methoden und Store direkt aufrufen (ohne Binary zu starten):
-- Read: Sessions aus Fixture laden, Suche filtert korrekt
-- Settings: Speichern → config.json, Cancel → keine Änderung
-- Export: Datei landet im konfigurierten Pfad
-- Trash/Restore/EmptyTrash: CRUD-Flows
+9 tests that call app methods and store directly (without starting binary):
+- Read: Load sessions from fixtures, search filters correctly
+- Settings: Save → config.json, cancel → no changes
+- Export: File lands in configured path
+- Trash/Restore/EmptyTrash: CRUD flows
 
-**Isolation:** Zwei Env-Vars entkoppeln von Produktivdaten:
-- `CLAUDE_DATA_DIR` → überschreibt `~/.claude` in `SessionStore::new()`
-- `AGENT_CONFIG_DIR` → überschreibt Platform-Config-Dir in `AppConfig::config_path()`
+**Isolation:** Two env vars decouple from production data:
+- `CLAUDE_DATA_DIR` → overrides `~/.claude` in `SessionStore::new()`
+- `AGENT_CONFIG_DIR` → overrides platform config dir in `AppConfig::config_path()`
 
-`tests/common/mod.rs` enthält `TestEnv`-Struct mit globalem `Mutex<()>` für serielle Ausführung (verhindert Race-Conditions bei Env-Var-Zugriff).
+`tests/common/mod.rs` contains `TestEnv` struct with global `Mutex<()>` for serial execution (prevents race conditions in env var access).
 
 ```bash
 cargo test --test integration
 ```
 
-### Layer 3 — E2E TUI-Tests (`tests/e2e/`)
+### Layer 3 — E2E TUI Tests (`tests/e2e/`)
 
-6 TypeScript-Tests mit `@microsoft/tui-test` (Microsoft). Starten die echte Binary
-und interagieren per Tastatureingabe. Nutzt xterm.js als Terminal-Emulator statt
-ConPTY-Pipes — funktioniert plattformübergreifend (Windows/Linux/macOS).
+6 TypeScript tests with `@microsoft/tui-test` (Microsoft). Starts the real binary
+and interacts via keyboard input. Uses xterm.js as terminal emulator instead
+of ConPTY pipes — works cross-platform (Windows/Linux/macOS).
 
-**Voraussetzung:** `cargo build` muss vorher gelaufen sein (Binary in `target/debug/`).
-
-```bash
-cd tests/e2e && npm test    # E2E-Tests ausführen
-```
-
-**Snapshots:** Tests enthalten `toMatchSnapshot()` Aufrufe, die bei jedem Lauf den Terminal-Zustand
-als Text in `tests/e2e/__snapshots__/sessions.test.ts.snap` schreiben (immer `--updateSnapshot`).
-Snapshots dienen zur **visuellen Inspektion** durch den Entwickler, nicht als Regressionstest
-(Timestamps und Temp-Pfade ändern sich bei jedem Lauf). Die Snapshot-Datei ist in `.gitignore`.
-
-### Test-Ausführung
+**Prerequisite:** `cargo build` must run first (binary in `target/debug/`).
 
 ```bash
-cargo test                      # alle Tests (Layer 1 + 2)
-cargo test --test integration   # nur Layer 2
-cd tests/e2e && npm test        # nur Layer 3 (E2E)
+cd tests/e2e && npm test    # Run E2E tests
 ```
 
-Tests verwenden `tempfile` für isolierte Testdaten.
+**Snapshots:** Tests contain `toMatchSnapshot()` calls that write terminal state on each run
+to `tests/e2e/__snapshots__/sessions.test.ts.snap` (always `--updateSnapshot`).
+Snapshots serve for **visual inspection** by the developer, not regression testing
+(timestamps and temp paths change on each run). Snapshot file is in `.gitignore`.
+
+### Test Execution
+
+```bash
+cargo test                      # all tests (Layer 1 + 2)
+cargo test --test integration   # only Layer 2
+cd tests/e2e && npm test        # only Layer 3 (E2E)
+```
+
+Tests use `tempfile` for isolated test data.
 
 ## Code Style
 
-- **Explizite Error-Handling**: Verwende `Result<T, E>` und `?`
-- **Clone sparsam**: Nur wenn Move-Semantics Probleme verursacht
-- **Tests MÜSSEN vorhanden sein**: Siehe TDD-Guidelines in globaler CLAUDE.md
-- **Keine unwrap() in Production-Code**: Verwende `expect()` mit Messages
+- **Explicit error handling**: Use `Result<T, E>` and `?`
+- **Minimize cloning**: Only when move semantics causes issues
+- **Tests MUST exist**: See TDD guidelines in global CLAUDE.md
+- **No unwrap() in production code**: Use `expect()` with messages
 
-## Keyboard-Handling
+## Keyboard Handling
 
-Event-Loop in `main.rs` delegiert zu App-Methoden:
-- Nur `KeyEventKind::Press` wird verarbeitet (Windows feuert auch KeyRelease — würde sonst doppelte Eingaben verursachen)
-- Modale Dialoge (Search, Settings, Help, Delete-Confirm) haben Priorität
-- `Esc` schließt modale Dialoge, beendet sonst die App
-- State-Flags: `app.show_search`, `app.show_settings`, `app.show_help`, `app.confirm_action`
+Event loop in `main.rs` delegates to app methods:
+- Only `KeyEventKind::Press` is processed (Windows also fires KeyRelease — would cause double inputs otherwise)
+- Modal dialogs (search, settings, help, delete confirm) have priority
+- `Esc` closes modal dialogs, exits app otherwise
+- State flags: `app.show_search`, `app.show_settings`, `app.show_help`, `app.confirm_action`
 
-| Shortcut | Funktion |
+| Shortcut | Function |
 |----------|----------|
-| `g` | Settings-Modal öffnen |
-| `e` | Export in `config.export_path` |
-| `h` | Help-Modal |
-| `Ctrl+F` | Suche |
+| `g` | Open settings modal |
+| `e` | Export to `config.export_path` |
+| `h` | Help modal |
+| `Ctrl+F` | Search |
 
 
-## Bekannte Einschränkungen
+## Known Limitations
 
-- **Claude Code-Abhängigkeit:** Funktioniert aktuell nur mit Claude Code — liest aus `~/.claude/projects/*/sessions/`
-- Keine Echtzeit-Updates (Session-Liste wird bei Start geladen)
-- Keine direkte Session-Bearbeitung (nur Switch, Delete, Export)
-- Messages werden komplett geladen (kein Lazy-Loading)
+- **Claude Code dependency:** Currently only works with Claude Code — reads from `~/.claude/projects/*/sessions/`
+- No real-time updates (session list loaded at startup)
+- No direct session editing (only switch, delete, export)
+- Messages fully loaded (no lazy loading)
 
 ## Future Ideas
 
-- Session-Suche in Message-Content
-- Session-Merge
-- Favoriten/Tags
-- Auto-Cleanup alter Sessions
-- Export nach andere Formate (JSON, HTML)
+- Search in message content
+- Session merge
+- Favorites/tags
+- Auto-cleanup of old sessions
+- Export to other formats (JSON, HTML)
