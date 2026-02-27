@@ -400,4 +400,61 @@ mod tests {
         assert_eq!(messages[0].role, "unknown");
         assert_eq!(messages[0].content, "hello");
     }
+
+    #[test]
+    fn test_display_project_name_strips_leading_dash() {
+        let mut s = Session::new("id".to_string(), "/home/g".to_string());
+        s.project_name = "-home-g".to_string();
+        assert_eq!(s.display_project_name(), "home-g");
+    }
+
+    #[test]
+    fn test_display_project_name_no_dash() {
+        let s = Session::new("id".to_string(), "/home/g/myproject".to_string());
+        assert_eq!(s.display_project_name(), "myproject");
+    }
+
+    #[test]
+    fn test_noise_message_slash_command_filtered() {
+        let line = r#"{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>"},"uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(messages.len(), 0, "slash command should be filtered");
+    }
+
+    #[test]
+    fn test_noise_message_local_caveat_filtered() {
+        let content = "before <local-command-caveat>DO NOT respond</local-command-caveat> after";
+        let line = format!(
+            r#"{{"type":"user","message":{{"role":"user","content":"{}"}},"uuid":"abc"}}"#,
+            content.replace('"', "\\\"")
+        );
+        let messages = parse_jsonl_messages(&line);
+        // "before  after" is not empty, so it stays — caveat itself is stripped
+        assert!(
+            messages.is_empty()
+                || !messages[0].content.contains("local-command-caveat"),
+            "caveat tag should be stripped"
+        );
+    }
+
+    #[test]
+    fn test_noise_message_stdout_only_filtered() {
+        // A message that is purely a code block (stdout) should be filtered
+        let cleaned = "```\nSet model to sonnet\n```";
+        assert!(is_noise_message(cleaned), "stdout-only block should be noise");
+    }
+
+    #[test]
+    fn test_noise_message_real_text_not_filtered() {
+        assert!(!is_noise_message("kannst du mir helfen?"));
+        assert!(!is_noise_message("hier ist code:\n```\nfoo\n```\nund mehr text"));
+    }
+
+    #[test]
+    fn test_ansi_codes_stripped() {
+        let line = r#"{"type":"user","message":{"role":"user","content":"\u001b[1mhello\u001b[0m"},"uuid":"abc"}"#;
+        let messages = parse_jsonl_messages(line);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "hello");
+    }
 }

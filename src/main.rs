@@ -1059,12 +1059,12 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_r_opens_rename_in_trash_tab() {
+    fn test_handle_r_does_not_open_rename_in_trash_tab() {
         let mut app = App::with_sessions(vec![]);
         app.trash = vec![make_session("t1", "p1")];
         app.current_tab = Tab::Trash;
         handle_key_event(&mut app, press(KeyCode::Char('r')));
-        assert!(app.show_rename);
+        assert!(!app.show_rename, "rename should not open in Trash tab");
     }
 
     // --- 'u' restore from trash ---
