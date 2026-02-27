@@ -57,39 +57,33 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 /// Launches `claude --resume <id>` after the TUI has exited.
 /// Uses spawn+wait on all platforms (terminal is already restored at this point).
+/// Sets the working directory via `current_dir()` instead of embedding the path
+/// in the shell command string, avoiding platform-specific quoting issues.
 fn launch_claude_resume(session_id: &str, path: Option<String>) {
+    let mut command;
+
     #[cfg(target_family = "unix")]
-    let (prog, args) = {
-        let cmd = match path {
-            Some(ref p) => format!("clear && cd {} && claude --resume {}", shell_escape(p), session_id),
-            None => format!("clear && claude --resume {}", session_id),
-        };
-        ("sh", vec!["-c".to_string(), cmd])
-    };
+    {
+        let cmd = format!("clear && claude --resume {}", session_id);
+        command = std::process::Command::new("sh");
+        command.args(["-c", &cmd]);
+    }
 
     #[cfg(target_os = "windows")]
-    let (prog, args) = {
-        let cmd = match path {
-            Some(ref p) => format!("cls && cd /d {} && claude --resume {}", cmd_quote(p), session_id),
-            None => format!("cls && claude --resume {}", session_id),
-        };
-        ("cmd", vec!["/c".to_string(), cmd])
-    };
+    {
+        let cmd = format!("cls && claude --resume {}", session_id);
+        command = std::process::Command::new("cmd");
+        command.args(["/c", &cmd]);
+    }
 
-    match std::process::Command::new(prog).args(&args).spawn() {
+    if let Some(ref p) = path {
+        command.current_dir(p);
+    }
+
+    match command.spawn() {
         Ok(mut child) => { let _ = child.wait(); }
         Err(e) => { eprintln!("Failed to launch claude: {}", e); std::process::exit(1); }
     }
-}
-
-#[cfg(target_family = "unix")]
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-#[cfg(target_os = "windows")]
-fn cmd_quote(s: &str) -> String {
-    format!("\"{}\"", s.replace('"', "\"\""))
 }
 
 fn run_app<B: Backend>(
@@ -537,35 +531,6 @@ mod tests {
         }
     }
 
-
-    // --- cmd_quote / shell_escape ---
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn test_cmd_quote_simple() {
-        assert_eq!(cmd_quote("C:\\Users\\test"), "\"C:\\Users\\test\"");
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn test_cmd_quote_with_quotes() {
-        assert_eq!(
-            cmd_quote("path with \"quotes\""),
-            "\"path with \"\"quotes\"\"\""
-        );
-    }
-
-    #[cfg(target_family = "unix")]
-    #[test]
-    fn test_shell_escape_simple() {
-        assert_eq!(shell_escape("/home/user/project"), "'/home/user/project'");
-    }
-
-    #[cfg(target_family = "unix")]
-    #[test]
-    fn test_shell_escape_with_quotes() {
-        assert_eq!(shell_escape("it's a path"), "'it'\\''s a path'");
-    }
 
     // --- handle_key_event ---
 

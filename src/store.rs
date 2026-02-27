@@ -4,12 +4,74 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Checks whether `candidate` matches a child directory of `parent`.
+/// First tries an exact name match, then a fuzzy match where dots in the real
+/// directory name are treated as equivalent to hyphens in the slug
+/// (Claude Code encodes both `/` and `.` as `-` on some platforms).
+/// Returns the resolved child path on success.
+fn match_child_dir(parent: &Path, candidate: &str) -> Option<PathBuf> {
+    let exact = parent.join(candidate);
+    if exact.is_dir() {
+        return Some(exact);
+    }
+    // Fuzzy: enumerate children and compare after normalising '.' → '-'
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                let name = child
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if name.replace('.', "-") == candidate {
+                    return Some(child);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Converts a Claude project slug (e.g. "-home-g-agent-session-manager") back to
 /// the actual filesystem path (e.g. "/home/g/agent-session-manager").
+/// On Windows, also handles drive-letter slugs (e.g. "C--Users-foo" → "C:\Users\foo").
 /// Uses a greedy algorithm trying longest directory segments first.
+/// Dots in directory names are treated as equivalent to hyphens (Claude Code encodes both as `-`).
 fn slug_to_path(slug: &str) -> Option<PathBuf> {
     let slug = slug.strip_prefix('-').unwrap_or(slug);
     let parts: Vec<&str> = slug.split('-').collect();
+
+    // Windows: "C--Users-..." → parts[0]="C", parts[1]="" (from --), parts[2..]= rest
+    #[cfg(target_os = "windows")]
+    if parts.len() >= 2
+        && parts[0].len() == 1
+        && parts[0].chars().next().map_or(false, |c| c.is_ascii_alphabetic())
+        && parts[1].is_empty()
+    {
+        let drive = format!("{}:\\", parts[0].to_uppercase());
+        let mut path = PathBuf::from(&drive);
+        let mut i = 2; // skip drive letter and empty part
+
+        while i < parts.len() {
+            let mut found = false;
+            for j in (i + 1..=parts.len()).rev() {
+                let candidate = parts[i..j].join("-");
+                if candidate.is_empty() {
+                    continue;
+                }
+                if let Some(child) = match_child_dir(&path, &candidate) {
+                    path = child;
+                    i = j;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return None;
+            }
+        }
+        return Some(path);
+    }
 
     let mut path = PathBuf::from("/");
     let mut i = 0;
@@ -19,9 +81,8 @@ fn slug_to_path(slug: &str) -> Option<PathBuf> {
         // Try longest segment combination first (greedy)
         for j in (i + 1..=parts.len()).rev() {
             let candidate = parts[i..j].join("-");
-            let test_path = path.join(&candidate);
-            if test_path.is_dir() {
-                path = test_path;
+            if let Some(child) = match_child_dir(&path, &candidate) {
+                path = child;
                 i = j;
                 found = true;
                 break;
@@ -509,6 +570,52 @@ mod tests {
         let result = slug_to_path("");
         // Empty slug with no parts should resolve to "/"
         assert_eq!(result, Some(PathBuf::from("/")));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_slug_to_path_resolves_windows_drive() {
+        // "C--Users" should start with "C:\" and resolve Users if it exists
+        let result = slug_to_path("C--Users");
+        if PathBuf::from("C:\\Users").is_dir() {
+            assert_eq!(result, Some(PathBuf::from("C:\\Users")));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_slug_to_path_resolves_windows_path() {
+        use tempfile::TempDir;
+        // Create a temp dir under C:\ (tempfile uses %TEMP% which is on C: typically)
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        // Build the slug from the real path: e.g. "C:\Users\foo\tmpXXX" → "C--Users-foo-tmpXXX"
+        let path_str = path.to_string_lossy();
+        // Convert Windows path to slug: remove leading drive "C:", replace \ with -
+        let without_drive = path_str
+            .trim_start_matches(|c: char| c.is_ascii_alphabetic())
+            .trim_start_matches(':');
+        let slug_body = without_drive.replace('\\', "-").replace('/', "-");
+        let drive_letter = path_str.chars().next().unwrap().to_uppercase().next().unwrap();
+        let slug = format!("{}--{}", drive_letter, slug_body.trim_matches('-'));
+
+        let result = slug_to_path(&slug);
+        assert_eq!(result, Some(path));
+    }
+
+    #[test]
+    fn test_slug_to_path_fuzzy_dot_in_dirname() {
+        use tempfile::TempDir;
+        // Simulate: parent dir contains "g.strainovic" but slug uses "g-strainovic"
+        let tmp = TempDir::new().unwrap();
+        let dotdir = tmp.path().join("g.strainovic").join("myproject");
+        fs::create_dir_all(&dotdir).unwrap();
+
+        // Build slug the way Claude Code would: replace '.' and '/' with '-'
+        // tmp path + /g.strainovic/myproject, but we only test the greedy part via match_child_dir
+        let result = match_child_dir(tmp.path(), "g-strainovic");
+        assert_eq!(result, Some(tmp.path().join("g.strainovic")));
     }
 
     #[test]
