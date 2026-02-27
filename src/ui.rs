@@ -481,7 +481,6 @@ fn draw_commands(f: &mut Frame, area: Rect, app: &mut App) {
         ],
         Tab::Trash => vec![
             ("u", " undo  ", ClickAction::RestoreFromTrash),
-            ("r", " rename  ", ClickAction::RenameSession),
             ("e", " empty trash ", ClickAction::EmptyTrash),
             ("f", " find  ", ClickAction::ToggleSearch),
             ("s", " sort  ", ClickAction::ToggleSort),

@@ -5,7 +5,7 @@ mod models;
 mod store;
 mod ui;
 
-use app::App;
+use app::{App, Tab};
 use crossterm::{
     event::{self, Event, KeyCode, MouseButton, MouseEventKind},
     execute,
@@ -215,7 +215,7 @@ fn handle_key_event(
         KeyCode::Enter if !app.show_search => {
             app.switch_to_selected_session();
         }
-        KeyCode::Char('r') if !app.show_search => {
+        KeyCode::Char('r') if !app.show_search && app.current_tab == Tab::Sessions => {
             app.open_rename();
         }
         KeyCode::Char('u') if !app.show_search => {
