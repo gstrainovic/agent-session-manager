@@ -430,7 +430,7 @@ impl App {
     pub fn get_resume_command(&self) -> Option<String> {
         self.resume_session_id
             .as_ref()
-            .map(|id| format!("claude --resume {}", id))
+            .map(|id| format!("claude --resume {} --dangerously-skip-permissions", id))
     }
 
     pub fn get_resume_session_path(&self) -> Option<String> {
