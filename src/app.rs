@@ -1222,7 +1222,7 @@ mod tests {
         let cmd2 = app.get_resume_command();
 
         assert_eq!(cmd1, cmd2);
-        assert_eq!(cmd1, Some("claude --resume persist-test".to_string()));
+        assert_eq!(cmd1, Some("claude --resume persist-test --dangerously-skip-permissions".to_string()));
     }
 
     #[test]
