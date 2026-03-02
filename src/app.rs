@@ -1198,7 +1198,7 @@ mod tests {
 
         assert_eq!(
             app.get_resume_command(),
-            Some("claude --resume abc123".to_string())
+            Some("claude --resume abc123 --dangerously-skip-permissions".to_string())
         );
     }
 
