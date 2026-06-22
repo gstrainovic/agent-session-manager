@@ -457,3 +457,80 @@ test.describe('help modal opens and closes', () => {
     await expect(terminal).toMatchSnapshot()
   })
 })
+
+// ─── Test 12: scroll down, delete, can still scroll up ──────────────────────
+// Regression-Test für Bug: Nach dem Löschen einer Session (während
+// gescrollt) sollte der erste UP-Druck sofort die Liste scrollen.
+
+const envScroll = createTempEnv()
+// Erstelle 10 Sessions mit eindeutigen Nachrichten.
+// Date-Desc-Sort: zuletzt erstellte Session erscheint zuerst.
+// Die älteste Session (als erste erstellt) erscheint ZULETZT.
+for (let i = 0; i < 10; i++) {
+  createFixtureSession(
+    envScroll.claudeDir,
+    `-scroll-test-proj-${String(i).padStart(2, '0')}`,
+    `uuid-scroll-${i}`,
+    [['user', `scroll-preview-content-${i}`]],
+  )
+}
+
+test.describe('scroll down delete scroll up', () => {
+  test.use({
+    program: { file: BIN },
+    env: {
+      ...process.env,
+      CLAUDE_DATA_DIR: envScroll.claudeDir,
+      AGENT_CONFIG_DIR: envScroll.configDir,
+    },
+    rows: 12,
+    columns: 80,
+  })
+
+  test('after delete while scrolled down, UP navigates correctly', async ({ terminal }) => {
+    await expect(
+      terminal.getByText('Sessions (10)', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+
+    // Nach unten scrollen bis zum Ende (mehr Drücke als Sessions)
+    for (let i = 0; i < 12; i++) {
+      terminal.keyDown()
+    }
+    await expect(terminal).toMatchSnapshot()
+
+    // Session löschen
+    terminal.write('d')
+    await expect(
+      terminal.getByText('trash', { strict: false }),
+    ).toBeVisible()
+    terminal.write('y')
+    await expect(
+      terminal.getByText('Moved to trash', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+
+    // UP drücken – Selektion muss sich ändern
+    terminal.keyUp()
+    await expect(terminal).toMatchSnapshot()
+
+    // Noch mal UP – Sessions (9) bleibt sichtbar (wir sind noch in der Liste)
+    terminal.keyUp()
+    await expect(
+      terminal.getByText('Sessions (9)', { strict: false }),
+    ).toBeVisible()
+
+    // Mehrfach UP drücken bis ganz nach oben
+    for (let i = 0; i < 10; i++) {
+      terminal.keyUp()
+    }
+
+    // Die erste Session im sortierten Liste (Index 0, das neueste Element)
+    // muss jetzt sichtbar und ausgewählt sein. Mit dem Bug würde das
+    // Scrollen erst nach vielen UP-Drücken beginnen.
+    await expect(
+      terminal.getByText('Sessions (9)', { strict: false }),
+    ).toBeVisible()
+    await expect(terminal).toMatchSnapshot()
+  })
+})

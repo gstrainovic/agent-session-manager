@@ -88,6 +88,8 @@ pub struct App {
     pub terminal_size: (u16, u16),
     /// Klickbare Regionen, die bei jedem Frame neu berechnet werden.
     pub click_regions: Vec<(Rect, ClickAction)>,
+    /// Wenn true: nächster Draw-Cycle fordert terminal.clear() an (Differential-Rendering-Artefakte).
+    pub needs_full_redraw: bool,
 }
 
 impl App {
@@ -118,6 +120,7 @@ impl App {
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
             click_regions: Vec::new(),
+            needs_full_redraw: false,
         }
     }
 
@@ -149,6 +152,7 @@ impl App {
             list_table_state: TableState::default(),
             terminal_size: (0, 0),
             click_regions: Vec::new(),
+            needs_full_redraw: false,
         }
     }
 
@@ -337,6 +341,7 @@ impl App {
         self.show_help = !self.show_help;
         if !self.show_help {
             self.help_scroll = 0;
+            self.needs_full_redraw = true;
         }
     }
 
@@ -352,6 +357,7 @@ impl App {
         self.show_search = !self.show_search;
         if !self.show_search {
             self.search_query.clear();
+            self.needs_full_redraw = true;
         }
     }
 
@@ -385,6 +391,10 @@ impl App {
                 {
                     self.selected_session_idx -= 1;
                 }
+                // Offset auf selected_session_idx setzen, damit der erste
+                // UP-Druck sofort scrollt (Bug: Viewport blieb nach Löschen
+                // am alten Offset und Scrollen schien nicht zu funktionieren).
+                *self.list_table_state.offset_mut() = self.selected_session_idx;
             }
         }
     }
@@ -532,6 +542,7 @@ impl App {
     pub fn cancel_confirmation(&mut self) {
         self.confirm_action = None;
         self.set_status("Action cancelled".to_string());
+        self.needs_full_redraw = true;
     }
 
     pub fn is_confirmation_pending(&self) -> bool {
@@ -599,10 +610,12 @@ impl App {
         let _ = self.config.save();
         self.show_settings = false;
         self.set_status(format!("Settings saved: {}", self.settings_input));
+        self.needs_full_redraw = true;
     }
 
     pub fn cancel_settings(&mut self) {
         self.show_settings = false;
+        self.needs_full_redraw = true;
     }
 
     pub fn settings_add_char(&mut self, c: char) {
@@ -624,11 +637,13 @@ impl App {
 
     pub fn save_rename(&mut self) -> Option<crate::models::Session> {
         self.show_rename = false;
+        self.needs_full_redraw = true;
         self.get_selected_session().cloned()
     }
 
     pub fn cancel_rename(&mut self) {
         self.show_rename = false;
+        self.needs_full_redraw = true;
         self.rename_input.clear();
     }
 
@@ -896,6 +911,61 @@ mod tests {
         app.selected_session_idx = 1;
         app.move_selected_to_trash();
         assert_eq!(app.selected_session_idx, 0);
+    }
+
+    #[test]
+    fn test_move_to_trash_resets_list_offset_to_selected() {
+        // Szenario: User hat nach unten gescrollt (offset > 0),
+        // löscht eine Session. Danach muss list_table_state.offset()
+        // == selected_session_idx sein, damit der erste UP-Druck
+        // sofort scrollt und nicht mehrere Drücke nötig sind.
+        let sessions: Vec<_> = (0..15)
+            .map(|i| make_session(&format!("s{i}"), &format!("p{i}")))
+            .collect();
+        let mut app = App::with_sessions(sessions);
+
+        // Simulate scrolled-down state: selected=10, offset=8
+        app.selected_session_idx = 10;
+        *app.list_table_state.offset_mut() = 8;
+
+        app.move_selected_to_trash();
+
+        // selected stays at 10 (zeigt auf die nächste Session)
+        assert_eq!(app.selected_session_idx, 10);
+        // offset muss nach der Löschung == selected_session_idx sein,
+        // damit UP sofort scrollt
+        assert_eq!(
+            app.list_table_state.offset(),
+            app.selected_session_idx,
+            "list_table_state.offset() sollte nach Löschung auf selected_session_idx gesetzt werden"
+        );
+    }
+
+    #[test]
+    fn test_select_prev_works_immediately_after_delete_when_scrolled() {
+        // Szenario: User scrollt nach unten, löscht, drückt UP.
+        // Der erste UP-Druck soll sofort dazu führen, dass
+        // selected_session_idx < list_table_state.offset()
+        // (damit ratatui beim nächsten Render scrollt).
+        let sessions: Vec<_> = (0..15)
+            .map(|i| make_session(&format!("s{i}"), &format!("p{i}")))
+            .collect();
+        let mut app = App::with_sessions(sessions);
+
+        app.selected_session_idx = 10;
+        *app.list_table_state.offset_mut() = 8;
+
+        app.move_selected_to_trash();
+        // Nach Löschung: selected=10, offset sollte =10 sein (nach Fix)
+
+        app.select_prev();
+        // Nach erstem UP: selected=9. Da offset==10 war, ist 9 < 10
+        // → ratatui würde beim Render sofort scrollen.
+        assert_eq!(app.selected_session_idx, 9);
+        assert!(
+            app.selected_session_idx < app.list_table_state.offset(),
+            "Nach erstem UP soll selected < offset sein, damit ratatui sofort scrollt"
+        );
     }
 
     #[test]

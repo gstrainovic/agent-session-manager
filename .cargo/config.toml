@@ -1,0 +1,6 @@
+# Workaround für windows-gnu Segfault beim Programmstart (Absturz in std::rt::init,
+# TLS-Callback-Tabelle). Ursache: das GNU-`ld` (bfd) aus den scoop-MinGW-Builds (gcc 16.1.0)
+# erzeugt bei größeren Binaries eine fehlerhafte TLS-Section-Anordnung. LLD als Linker behebt es.
+# Gilt nur für das gnu-Target — auf msvc/Linux/macOS ohne Wirkung.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-Clink-arg=-fuse-ld=lld"]

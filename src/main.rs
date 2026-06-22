@@ -89,8 +89,15 @@ fn launch_claude_resume(session_id: &str, path: Option<String>) {
 fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
-) -> io::Result<Option<(String, Option<String>)>> {
+) -> io::Result<Option<(String, Option<String>)>>
+where
+    io::Error: From<B::Error>,
+{
     loop {
+        if app.needs_full_redraw {
+            app.needs_full_redraw = false;
+            terminal.clear()?;
+        }
         terminal.draw(|f| ui::draw(f, &mut app))?;
         app.clear_expired_status();
 
@@ -190,6 +197,7 @@ fn handle_key_event(
                 app.cancel_confirmation();
             } else if app.show_search {
                 app.show_search = false;
+                app.needs_full_redraw = true;
             } else {
                 return Some(Ok(None));
             }
